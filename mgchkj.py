@@ -29,6 +29,7 @@
 # special "!" line.
 
 import sys
+import re
 
 class MCJFileLevelException(Exception):
     pass
@@ -45,6 +46,7 @@ class rule_context:
         rule.level = 0
         rule.text = ''
         rule.typefield = ''
+        rule.typefield_operator = ''
         rule.valuefield = ''
         rule.message = ''
         rule.has_child = False
@@ -300,8 +302,11 @@ def set_more_rule_properties(ctx, fctx, rule):
         rule.match_broadness = 2
     elif rule.typefield=='use' or rule.typefield=='name':
         rule.match_broadness = 2
-    elif '&' in rule.typefield:
-        # '&' in the 'type' field means we could be testing just a few
+    elif rule.typefield_operator=='&' or \
+        rule.typefield_operator=='|' or \
+        rule.typefield_operator=='%':
+        # Certain operators in the 'type' field mean we
+        # could be testing just a few
         # bits, in which case all the possible values might reasonably
         # be handled. We don't have a good way to deal with that.
         rule.match_broadness = 1
@@ -411,10 +416,18 @@ def parse_one_line(ctx, fctx, line_text):
     rule.linenum = fctx.linenum
     rule.level = level
     rule.text = line_text
+
     rule.typefield = field[1]
-    rule.valuefield = field[2]
+
     if '/' in rule.typefield:
         rule.typefield = (rule.typefield.split('/', 1))[0]
+
+    m1 = re.match('([a-zA-Z0-9_]+)([-+&|%*^])', rule.typefield)
+    if m1:
+        rule.typefield = m1.group(1)
+        rule.typefield_operator = m1.group(2)
+
+    rule.valuefield = field[2]
     rule.message = field[3]
 
     return rule
