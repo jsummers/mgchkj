@@ -38,6 +38,7 @@ class context:
     def __init__(ctx):
         ctx.quieter = False
         ctx.debug = False
+        ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
 
 class rule_context:
     def __init__(rule, ctx, fctx):
@@ -512,7 +513,7 @@ def parse_one_line(ctx, fctx, line_text):
     if '/' in rule.typefield:
         rule.typefield = (rule.typefield.split('/', 1))[0]
 
-    m1 = re.match('([a-zA-Z0-9_]+)([-+&|%*^])', rule.typefield)
+    m1 = ctx.type_re1.match(rule.typefield)
     if m1:
         rule.typefield = m1.group(1)
         rule.typefield_operator = m1.group(2)
