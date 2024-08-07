@@ -12,7 +12,7 @@
 #  Development/website: https://github.com/jsummers/mgchkj
 #  Email: jason1@pobox.com
 #
-# Two types of issues are reported:
+# Two main types of issues are reported:
 #
 # * "Line has no effect"
 #   Finds some lines that have no effect, usually because they have no
@@ -70,6 +70,79 @@ class file_context:
         fctx.name = 'noname'
         fctx.linenum = 0
 
+#-------------------------------
+
+class unescape_context:
+    def __init__(self):
+        self.output = ''
+        self.escape_pending = False
+        self.have_pending_int = False
+        self.pending_int_base = 0
+        self.max_digits_pending = 0
+        self.pending_int = 0
+
+def unescape_flush(ue):
+    if ue.have_pending_int:
+        ue.output += chr(ue.pending_int)
+        ue.have_pending_int = False
+
+def decode_ascii_digit(chn, base):
+    if base==8:
+        if chn>=48 and chn<=55:
+            return chn-48, True
+    elif base==16:
+        if chn>=48 and chn<=57:
+            return chn-48, True
+        elif chn>=0x41 and chn<=0x46:
+            return chn-55, True
+        elif chn>=0x61 and chn<=0x66:
+            return chn-87, True
+    return 0, False
+
+def unescape_addchar(ue, ch):
+    chn = ord(ch)
+
+    if ue.have_pending_int:
+        val, ok = decode_ascii_digit(chn, ue.pending_int_base)
+        if ok:
+            ue.pending_int *= ue.pending_int_base
+            ue.pending_int += val
+            ue.max_digits_pending -= 1
+            if ue.max_digits_pending<1:
+                unescape_flush(ue)
+            return
+        else:
+            unescape_flush(ue)
+
+    if ue.escape_pending:
+        if ch=='x':
+            ue.have_pending_int = True
+            ue.pending_int_base = 16
+            ue.max_digits_pending = 2
+            ue.pending_int = 0
+        elif chn>=48 and chn<=55:
+            ue.have_pending_int = True
+            ue.pending_int_base = 8
+            ue.max_digits_pending = 2
+            ue.pending_int = chn-48
+        else:
+            ue.output += ch
+        ue.escape_pending = False
+    else:
+        if chn==0x5c:
+            ue.escape_pending = True
+        else:
+            ue.output += ch
+
+def unescape_value(t_escaped):
+    ue = unescape_context()
+    for i in range(len(t_escaped)):
+        unescape_addchar(ue, t_escaped[i])
+    unescape_flush(ue)
+    return ue.output
+
+#-------------------------------
+
 def del_warnings_from_children(rule):
     rule.warnings_from_children = ''
 
@@ -82,6 +155,10 @@ def format_warning(ctx, fctx, rule, msg):
     fullmsg = '%s:%d: %s [%s]\n' % \
         (fctx.name, rule.linenum, msg, rule.text)
     return fullmsg
+
+def emit_warning(ctx, fctx, rule, msg1):
+    fullmsg = format_warning(ctx, fctx, rule, msg1)
+    print(fullmsg, end='')
 
 def late_newarn_stuff(ctx, fctx, rule):
     # It's important to get the order of the following operations right.
@@ -320,8 +397,22 @@ def set_more_rule_properties(ctx, fctx, rule):
         print('rule@', rule.linenum)
         print('broadness(e):', rule.match_broadness)
 
+# In the version of file I'm using, a regex (the 'value' field
+# after one layer of unescaping) is an ASCII string, and cannot
+# contain NUL bytes. A NUL byte will be interpreted as the end of
+# the expression. If the truncated expression happens to be
+# syntactically valid, there will be no error; it just won't work
+# right.
+def regexnul_warn(ctx, fctx, rule):
+    if rule.typefield != 'regex':
+        return
+    val_u = unescape_value(rule.valuefield)
+    if '\x00' in val_u:
+        emit_warning(ctx, fctx, rule, 'Regex might be truncated by NUL byte')
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
+    regexnul_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
 def parse_one_line(ctx, fctx, line_text):
@@ -394,7 +485,6 @@ def parse_one_line(ctx, fctx, line_text):
                 continue
             if ch=='\\':
                 escape_flag = True
-                continue
             field[2] += ch
 
         if fstate==6:
