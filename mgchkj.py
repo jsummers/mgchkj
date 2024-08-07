@@ -38,6 +38,7 @@ class context:
     def __init__(ctx):
         ctx.quieter = False
         ctx.debug = False
+        ctx.warning_level = 1
         ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
 
 class rule_context:
@@ -361,11 +362,17 @@ def early_cmwarn_stuff(ctx, fctx, rule):
     if rule.typefield=='name':
         rule.silence_cm_warning = True
 
-def looks_like_continuation_message(msg):
+def looks_like_continuation_message(ctx, msg):
     if len(msg)>=2:
         if msg[0:2]=="\\b":
             return True
         elif msg[0]=='%' and msg[1]!='s':
+            return True
+        elif msg.startswith('version '):
+            return True
+        elif ctx.warning_level>=2 and \
+            msg[0]>='a' and msg[0]<='z' and \
+            ('%' in msg):
             return True
     if len(msg)>=1:
         if msg[0] in '(-':
@@ -374,7 +381,7 @@ def looks_like_continuation_message(msg):
 
 def set_more_rule_properties(ctx, fctx, rule):
     rule.likely_continuation_message = \
-        looks_like_continuation_message(rule.message)
+        looks_like_continuation_message(ctx, rule.message)
 
     if rule.valuefield=='x':
         rule.match_broadness = 2
@@ -584,6 +591,8 @@ def onefile(ctx, fn):
 def usage():
     print("mgchkj")
     print("Usage: mgchkj.py [options] file1 [file2...]")
+    print("Options:")
+    print(" -w2  Extra warnings (Expect false positives, etc.)")
 
 def main():
     ctx = context()
@@ -595,6 +604,10 @@ def main():
                 ctx.quieter = True
             elif sys.argv[i][1]=='d':
                 ctx.debug = True
+            elif sys.argv[i][1]=='w':
+                lv = sys.argv[i][2]
+                if lv>='1' and lv<='9':
+                    ctx.warning_level = int(lv)
         else:
             filecount = filecount+1
 
