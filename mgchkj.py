@@ -418,8 +418,17 @@ def regexnul_warn(ctx, fctx, rule):
     if '\x00' in val_u:
         emit_warning(ctx, fctx, rule, 'Regex might be truncated by NUL byte')
 
+def nonascii_warn(ctx, fctx, rule):
+    for i in range(len(rule.text)):
+        n = ord(rule.text[i])
+        if n>=127:
+            emit_warning(ctx, fctx, rule, 'Line has non-ASCII characters')
+            return
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
+    if ctx.warning_level>=2:
+        nonascii_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
