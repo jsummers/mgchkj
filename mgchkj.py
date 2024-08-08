@@ -362,7 +362,7 @@ def early_cmwarn_stuff(ctx, fctx, rule):
     if rule.typefield=='name':
         rule.silence_cm_warning = True
 
-def looks_like_continuation_message(ctx, msg):
+def looks_like_continuation_message(ctx, rule, msg):
     if len(msg)>=2:
         if msg[0:2]=="\\b":
             return True
@@ -370,7 +370,7 @@ def looks_like_continuation_message(ctx, msg):
             return True
         elif msg.startswith('version '):
             return True
-        elif ctx.warning_level>=2 and \
+        elif ctx.warning_level>=2 and rule.level>0 and \
             msg[0]>='a' and msg[0]<='z' and \
             ('%' in msg):
             return True
@@ -381,7 +381,7 @@ def looks_like_continuation_message(ctx, msg):
 
 def set_more_rule_properties(ctx, fctx, rule):
     rule.likely_continuation_message = \
-        looks_like_continuation_message(ctx, rule.message)
+        looks_like_continuation_message(ctx, rule, rule.message)
 
     if rule.valuefield=='x':
         rule.match_broadness = 2
@@ -425,11 +425,26 @@ def nonascii_warn(ctx, fctx, rule):
             emit_warning(ctx, fctx, rule, 'Line has non-ASCII characters')
             return
 
+def badquotes_warn(ctx, fctx, rule):
+    # It's suspicious if:
+    # the value starts with '"' and contains no other '"'; and
+    # the message contains exactly one '"'.
+    if rule.message=='':
+        return
+    if not (rule.valuefield.startswith('"')):
+        return
+    if ('"' in rule.valuefield[1:]):
+        return
+    if(rule.message.count('"') != 1):
+        return
+    emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
+    badquotes_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
 def parse_one_line(ctx, fctx, line_text):
