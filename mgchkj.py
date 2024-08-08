@@ -466,7 +466,7 @@ def parse_one_line(ctx, fctx, line_text):
     for i in range(len(line_text)):
         ch = line_text[i]
 
-        isws = (ch=='\x09' or ch=='\x20')
+        isws = (ch=='\x20')
         if fstate==0:
             if isws:
                 continue
@@ -585,11 +585,29 @@ def one_line(ctx, fctx, line_text):
         print('push rule@%d' % (rule.linenum))
     fctx.rule_stack.append(rule)
 
+def preprocess_line(ctx, l1):
+    l2 = ''
+    wscount = 0
+    for i in range(len(l1)):
+        ch = l1[i]
+        if ch==' ' or ch=='\x09':
+            # Convert tabs to spaces, and limit the length of runs of
+            # spaces in our output messages.
+            # This should not meaningfully affect processing.
+            wscount += 1
+            if wscount<=3:
+                l2 += ' '
+        else:
+            l2 += ch
+            wscount = 0
+
+    return l2
+
 def onefile_main(ctx, fctx):
     for line in fctx.inf:
         fctx.linenum += 1
         line2 = line.rstrip('\n\r\x20\x09')
-        line2 = line2.replace('\x09', '\x20')
+        line2 = preprocess_line(ctx, line2)
         one_line(ctx, fctx, line2)
 
 def onefile(ctx, fn):
