@@ -40,6 +40,15 @@ class context:
         ctx.debug = False
         ctx.warning_level = 1
         ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
+        ctx.native_byte_order_types = [
+            'short', 'ushort', 'long', 'ulong', 'quad', 'uquad',
+            'msdosdate', 'umsdosdate', 'msdostime', 'umsdostime',
+            'date', 'udate', 'ldate', 'uldate',
+            'qdate', 'uqdate', 'qldate', 'uqldate',
+            'qwdate', 'uqwdate',
+            'float', 'ufloat', 'double', 'udouble',
+            'dS', 'uS', 'd2', 'u2', 'dI', 'uI', 'dL', 'uL', 'd4', 'u4',
+            'dQ', 'uQ', 'd8', 'u8']
 
 class rule_context:
     def __init__(rule, ctx, fctx):
@@ -49,9 +58,11 @@ class rule_context:
         rule.text = ''
         rule.typefield = ''
         rule.typefield_operator = ''
+        rule.type_is_unsigned = False
         rule.valuefield = ''
         rule.message = ''
         rule.has_child = False
+        rule.has_format_specifier = False
         rule.likely_continuation_message = False
         # 0=narrow (equality), 1=broad, 2=wildcard
         rule.match_broadness = 2
@@ -372,7 +383,7 @@ def looks_like_continuation_message(ctx, rule, msg):
             return True
         elif ctx.warning_level>=2 and rule.level>0 and \
             msg[0]>='a' and msg[0]<='z' and \
-            ('%' in msg):
+            rule.has_format_specifier:
             return True
     if len(msg)>=1:
         if msg[0] in '(-':
@@ -380,6 +391,10 @@ def looks_like_continuation_message(ctx, rule, msg):
     return False
 
 def set_more_rule_properties(ctx, fctx, rule):
+    if rule.typefield.startswith('u'):
+        rule.type_is_unsigned = True
+    if '%' in rule.message:
+        rule.has_format_specifier = True
     rule.likely_continuation_message = \
         looks_like_continuation_message(ctx, rule, rule.message)
 
@@ -439,8 +454,30 @@ def badquotes_warn(ctx, fctx, rule):
         return
     emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
 
+def nativebyteorder_warn(ctx, fctx, rule):
+    if rule.typefield not in ctx.native_byte_order_types:
+        return
+    if rule.valuefield=='0' or rule.valuefield=='=0':
+        return
+    if not rule.has_format_specifier:
+        if rule.valuefield=='!0' or rule.valuefield=='x':
+            return
+        if rule.type_is_unsigned and rule.valuefield=='>0':
+            return
+    # TODO: Parse integers properly.
+    # TODO: Knowledge about integer type sizes.
+    # TODO: Whitelist simple palindromic rules.
+    # TODO: Whitelist complex palindromic rules.
+    # Note: There are some rules that intentionally print things like
+    #   "native byte-order" or "byte-swapped", but IMHO such rules
+    #   deserve a warning.
+    emit_warning(ctx, fctx, rule,
+        'Pattern might depend on platform byte order')
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
+    if ctx.warning_level>=2:
+        nativebyteorder_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
