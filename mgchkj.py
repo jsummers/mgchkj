@@ -411,7 +411,7 @@ def set_more_rule_properties(ctx, fctx, rule):
         # be handled. We don't have a good way to deal with that.
         rule.match_broadness = 1
     elif len(rule.valuefield)>0:
-        if rule.valuefield[0] in '!<>&^!':
+        if rule.valuefield[0] in '!<>&^':
             rule.match_broadness = 1
         else:
             rule.match_broadness = 0
@@ -457,13 +457,23 @@ def badquotes_warn(ctx, fctx, rule):
 def nativebyteorder_warn(ctx, fctx, rule):
     if rule.typefield not in ctx.native_byte_order_types:
         return
-    if rule.valuefield=='0' or rule.valuefield=='=0':
-        return
-    if not rule.has_format_specifier:
-        if rule.valuefield=='!0' or rule.valuefield=='x':
+
+    apply_whitelist = True
+
+    if rule.typefield_operator!='':
+        # A rule like ">0  ushort&0x000f  0  ..." is most likely
+        # byte-order dependent.
+        apply_whitelist = False
+
+    if apply_whitelist:
+        if rule.valuefield=='0' or rule.valuefield=='=0':
             return
-        if rule.type_is_unsigned and rule.valuefield=='>0':
-            return
+        if not rule.has_format_specifier:
+            if rule.valuefield=='!0' or rule.valuefield=='x':
+                return
+            if rule.type_is_unsigned and rule.valuefield=='>0':
+                return
+
     # TODO: Parse integers properly.
     # TODO: Knowledge about integer type sizes.
     # TODO: Whitelist simple palindromic rules.
