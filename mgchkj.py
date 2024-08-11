@@ -549,7 +549,8 @@ def parse_one_line(ctx, fctx, line_text):
 
         if fstate==5:
             if isws and internal_whitespace_flag:
-                field[2] += ch
+                # For convenience later, we don't save the internal whitespace
+                # in field[2].
                 continue
             internal_whitespace_flag = False
             if escape_flag:
