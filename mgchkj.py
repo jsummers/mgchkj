@@ -557,7 +557,7 @@ def parse_one_line(ctx, fctx, line_text):
                 escape_flag = False
                 continue
             # Whitespace can occur after the match operator, for some reason.
-            if field[2]=='' and (ch in '!=<>&^!'):
+            if field[2]=='' and (ch in '!=<>&^~'):
                 internal_whitespace_flag = True
             if isws:
                 fstate = 6
