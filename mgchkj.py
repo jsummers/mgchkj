@@ -34,21 +34,16 @@ import re
 class MCJFileLevelException(Exception):
     pass
 
+class fdatatype:
+    pass
+
 class context:
     def __init__(ctx):
         ctx.quieter = False
         ctx.debug = False
         ctx.warning_level = 1
         ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
-        ctx.native_byte_order_types = [
-            'short', 'ushort', 'long', 'ulong', 'quad', 'uquad',
-            'msdosdate', 'umsdosdate', 'msdostime', 'umsdostime',
-            'date', 'udate', 'ldate', 'uldate',
-            'qdate', 'uqdate', 'qldate', 'uqldate',
-            'qwdate', 'uqwdate',
-            'float', 'ufloat', 'double', 'udouble',
-            'dS', 'uS', 'd2', 'u2', 'dI', 'uI', 'dL', 'uL', 'd4', 'u4',
-            'dQ', 'uQ', 'd8', 'u8']
+        ctx.fdatatypes = {}
 
 class rule_context:
     def __init__(rule, ctx, fctx):
@@ -58,7 +53,6 @@ class rule_context:
         rule.text = ''
         rule.typefield = ''
         rule.typefield_operator = ''
-        rule.type_is_unsigned = False
         rule.valuefield = ''
         rule.message = ''
         rule.has_child = False
@@ -391,8 +385,6 @@ def looks_like_continuation_message(ctx, rule, msg):
     return False
 
 def set_more_rule_properties(ctx, fctx, rule):
-    if rule.typefield.startswith('u'):
-        rule.type_is_unsigned = True
     if '%' in rule.message:
         rule.has_format_specifier = True
     rule.likely_continuation_message = \
@@ -454,9 +446,21 @@ def badquotes_warn(ctx, fctx, rule):
         return
     emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
 
+# Does the given type have native byte order?
+def type_has_nbo(ctx, t):
+    x = ctx.fdatatypes.get(t)
+    if x is None:
+        return False
+    return x.nbo
+
 def nativebyteorder_warn(ctx, fctx, rule):
-    if rule.typefield not in ctx.native_byte_order_types:
+    if not type_has_nbo(ctx, rule.typefield):
         return
+
+    if rule.typefield.startswith('u'):
+        type_is_unsigned = True
+    else:
+        type_is_unsigned = False
 
     apply_whitelist = True
 
@@ -471,11 +475,10 @@ def nativebyteorder_warn(ctx, fctx, rule):
         if not rule.has_format_specifier:
             if rule.valuefield=='!0' or rule.valuefield=='x':
                 return
-            if rule.type_is_unsigned and rule.valuefield=='>0':
+            if type_is_unsigned and rule.valuefield=='>0':
                 return
 
     # TODO: Parse integers properly.
-    # TODO: Knowledge about integer type sizes.
     # TODO: Whitelist simple palindromic rules.
     # TODO: Whitelist complex palindromic rules.
     # Note: There are some rules that intentionally print things like
@@ -678,6 +681,58 @@ def onefile(ctx, fn):
     finally:
         fctx.inf.close()
 
+def init_datatypes(ctx):
+    items = [ 'short', 'ushort',
+        'dS', 'd2', 'uS', 'u2'
+        'msdosdate', 'umsdosdate', 'msdostime', 'umsdostime' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = True
+        x.nbo = True
+        x.fieldsize = 2
+        ctx.fdatatypes[i] = x
+
+    items = [ 'long', 'ulong',
+        'dI', 'dL', 'd4', 'uI', 'uL', 'u4',
+        'date', 'udate', 'ldate', 'uldate' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = True
+        x.nbo = True
+        x.fieldsize = 4
+        ctx.fdatatypes[i] = x
+
+    items = [ 'quad', 'uquad',
+        'dQ', 'd8', 'uQ', 'u8',
+        'qdate', 'uqdate', 'qldate', 'uqldate', 'qwdate', 'uqwdate' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = True
+        x.nbo = True
+        x.fieldsize = 8
+        ctx.fdatatypes[i] = x
+
+    items = [ 'float' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = False
+        x.nbo = True
+        x.fieldsize = 4
+        ctx.fdatatypes[i] = x
+
+    items = [ 'double' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = False
+        x.nbo = True
+        x.fieldsize = 8
+        ctx.fdatatypes[i] = x
+
 def usage():
     print("mgchkj")
     print("Usage: mgchkj.py [options] file1 [file2...]")
@@ -704,6 +759,8 @@ def main():
     if filecount==0:
         usage()
         return
+
+    init_datatypes(ctx)
 
     for i in range(1, len(sys.argv)):
         if sys.argv[i][0]!='-':
