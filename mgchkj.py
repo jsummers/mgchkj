@@ -43,6 +43,10 @@ class context:
         ctx.debug = False
         ctx.warning_level = 1
         ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
+        # Note: We don't currently handle numbers starting with '-' or '+'.
+        ctx.val_re_base8 = re.compile('0[0-7]*$')
+        ctx.val_re_base10 = re.compile('[1-9][0-9]*$')
+        ctx.val_re_base16 = re.compile('0x[0-9A-Fa-f]+$')
         ctx.fdatatypes = {}
 
 class rule_context:
@@ -71,6 +75,7 @@ class rule_context:
         # Number of descendants with a starter message,
         # by match 'broadness'.
         rule.num_dsc_with_sm_by_br = [0, 0, 0]
+        rule.fdatatypeinfo = None
 
 class file_context:
     def __init__(fctx, ctx):
@@ -447,16 +452,33 @@ def badquotes_warn(ctx, fctx, rule):
         return
     emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
 
-# Does the given type have native byte order?
-def type_has_nbo(ctx, t):
-    x = ctx.fdatatypes.get(t)
-    if x is None:
+def number_is_palindrome(n, nbytes):
+    if n<0:
         return False
-    return x.nbo
+    if nbytes==2:
+        if (n>>8)==(n & 0xff):
+            return True
+    elif nbytes==4:
+        if (n>>24)==(n & 0xff) and \
+            ((n>>16)&0xff) == ((n>>8)&0xff):
+            return True
+    elif nbytes==8:
+        if (n>>56)==(n & 0xff) and \
+            ((n>>48)&0xff) == ((n>>8)&0xff) and \
+            ((n>>40)&0xff) == ((n>>16)&0xff) and \
+            ((n>>32)&0xff) == ((n>>24)&0xff):
+            return True
+    return False
 
 def nativebyteorder_warn(ctx, fctx, rule):
-    if not type_has_nbo(ctx, rule.typefield):
-        return
+    rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
+
+    if rule.fdatatypeinfo is None:
+        return False
+    if not rule.fdatatypeinfo.isnumber:
+        return False
+    if not rule.fdatatypeinfo.nbo:
+        return False
 
     if rule.typefield.startswith('u'):
         type_is_unsigned = True
@@ -470,19 +492,58 @@ def nativebyteorder_warn(ctx, fctx, rule):
         # byte-order dependent.
         apply_whitelist = False
 
+    val = 1 # arbitrary default
+    if rule.fdatatypeinfo.isint:
+        pflag = False
+        if rule.valuefield=='0':
+            val = 0
+            pflag = True
+
+        if not pflag: # try octal
+            m1 = ctx.val_re_base8.match(rule.valuefield)
+            if m1:
+                val = int(rule.valuefield, base=8)
+                pflag = True
+
+        if not pflag: # try decimal
+            m1 = ctx.val_re_base10.match(rule.valuefield)
+            if m1:
+                val = int(rule.valuefield, base=10)
+                pflag = True
+
+        if not pflag: # try hex
+            m1 = ctx.val_re_base16.match(rule.valuefield)
+            if m1:
+                val = int(rule.valuefield[2:], base=16)
+                pflag = True
+
+    else:
+        # floating point, presumably
+        if rule.valuefield=='0' or rule.valuefield=='0.0':
+            val = 0
+
     if apply_whitelist:
-        if rule.valuefield=='0' and rule.valuefield_operator=='=':
+        if val==0 and rule.valuefield_operator=='=':
             return
         if not rule.has_format_specifier:
-            if (rule.valuefield=='0' and rule.valuefield_operator=='!') \
+            if (val==0 and rule.valuefield_operator=='!') \
                 or rule.valuefield_operator=='x':
                 return
-            if type_is_unsigned and (rule.valuefield=='0' and \
+            if type_is_unsigned and (val==0 and \
                 rule.valuefield_operator=='>'):
                 return
 
-    # TODO: Parse integers properly.
-    # TODO: Whitelist simple palindromic rules.
+    whitelist_palindromes = apply_whitelist and \
+        rule.fdatatypeinfo.isint and \
+        (rule.valuefield_operator=='=' or \
+        ((rule.valuefield_operator in r'!&^') and \
+        not rule.has_format_specifier))
+    # TODO: Not sure about '~' operator.
+
+    if whitelist_palindromes:
+        if number_is_palindrome(val, rule.fdatatypeinfo.fieldsize):
+            return
+
     # TODO: Whitelist complex palindromic rules.
     # Note: There are some rules that intentionally print things like
     #   "native byte-order" or "byte-swapped", but IMHO such rules
