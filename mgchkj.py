@@ -54,6 +54,7 @@ class rule_context:
         rule.typefield = ''
         rule.typefield_operator = ''
         rule.valuefield = ''
+        rule.valuefield_operator = '='
         rule.message = ''
         rule.has_child = False
         rule.has_format_specifier = False
@@ -390,7 +391,7 @@ def set_more_rule_properties(ctx, fctx, rule):
     rule.likely_continuation_message = \
         looks_like_continuation_message(ctx, rule, rule.message)
 
-    if rule.valuefield=='x':
+    if rule.valuefield_operator=='x':
         rule.match_broadness = 2
     elif rule.typefield=='use' or rule.typefield=='name':
         rule.match_broadness = 2
@@ -402,8 +403,8 @@ def set_more_rule_properties(ctx, fctx, rule):
         # bits, in which case all the possible values might reasonably
         # be handled. We don't have a good way to deal with that.
         rule.match_broadness = 1
-    elif len(rule.valuefield)>0:
-        if rule.valuefield[0] in '!<>&^':
+    else:
+        if rule.valuefield_operator in '!<>&^':
             rule.match_broadness = 1
         else:
             rule.match_broadness = 0
@@ -470,12 +471,14 @@ def nativebyteorder_warn(ctx, fctx, rule):
         apply_whitelist = False
 
     if apply_whitelist:
-        if rule.valuefield=='0' or rule.valuefield=='=0':
+        if rule.valuefield=='0' and rule.valuefield_operator=='=':
             return
         if not rule.has_format_specifier:
-            if rule.valuefield=='!0' or rule.valuefield=='x':
+            if (rule.valuefield=='0' and rule.valuefield_operator=='!') \
+                or rule.valuefield_operator=='x':
                 return
-            if type_is_unsigned and rule.valuefield=='>0':
+            if type_is_unsigned and (rule.valuefield=='0' and \
+                rule.valuefield_operator=='>'):
                 return
 
     # TODO: Parse integers properly.
@@ -600,7 +603,15 @@ def parse_one_line(ctx, fctx, line_text):
         rule.typefield = m1.group(1)
         rule.typefield_operator = m1.group(2)
 
-    rule.valuefield = field[2]
+    if field[2]=='x':
+        rule.valuefield = ''
+        rule.valuefield_operator = 'x'
+    elif field[2][0:1] in r'=<>&^~!':
+        rule.valuefield = field[2][1:]
+        rule.valuefield_operator = field[2][0:1]
+    else:
+        rule.valuefield = field[2]
+
     rule.message = field[3]
 
     return rule
