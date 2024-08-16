@@ -395,7 +395,7 @@ def looks_like_continuation_message(ctx, rule, msg):
             rule.has_format_specifier:
             return True
     if len(msg)>=1:
-        if msg[0] in '(-':
+        if msg[0] in '(-,;:':
             return True
     return False
 
@@ -450,6 +450,14 @@ def nonascii_warn(ctx, fctx, rule):
         if n>=127:
             emit_warning(ctx, fctx, rule, 'Line has non-ASCII characters')
             return
+
+def spacecomma_warn(ctx, fctx, rule):
+    if len(rule.message)<1 or rule.level==0:
+        return
+    # Should we also look for ':'? It's pretty common.
+    if rule.message[0] in ',;':
+        emit_warning(ctx, fctx, rule, 'Message might include an unwanted '
+        'space; consider \\b')
 
 def badquotes_warn(ctx, fctx, rule):
     # It's suspicious if:
@@ -578,6 +586,7 @@ def process_rule_early(ctx, fctx, rule):
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
+    spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
