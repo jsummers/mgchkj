@@ -12,7 +12,7 @@
 #  Development/website: https://github.com/jsummers/mgchkj
 #  Email: jason1@pobox.com
 #
-# Two main types of issues are reported:
+# Main issues reported:
 #
 # * "Line has no effect"
 #   Finds some lines that have no effect, usually because they have no
@@ -23,6 +23,14 @@
 #   This is a fairly crude checker that finds *some* cases where a
 #   (presumably pathological) input file could cause an attribute to be
 #   printed without the file format ever being printed.
+#
+# * "Pattern might depend on platform byte order"
+#   Warns about rules that might work differently on different systems.
+#   Disabled by default (need -w2), mainly because big-endian systems are
+#   uncommon nowadays, so it may not be much of an issue in practice.
+#   I acknowledge that some rules intentionally use native types to print
+#   things like "native byte-order" or "byte-swapped", but it's debatable
+#   whether that's good practice.
 #
 # Terminology note: Here, "rule" means a normal configuration line
 # in the magic file: anything that's not a comment, blank line, or
@@ -76,6 +84,7 @@ class rule_context:
         # by match 'broadness'.
         rule.num_dsc_with_sm_by_br = [0, 0, 0]
         rule.fdatatypeinfo = None
+        rule.nbo_warning_handled = False
 
 class file_context:
     def __init__(fctx, ctx):
@@ -414,6 +423,10 @@ def set_more_rule_properties(ctx, fctx, rule):
         else:
             rule.match_broadness = 0
 
+    if rule.parent is not None:
+        if rule.parent.nbo_warning_handled:
+            rule.nbo_warning_handled = True
+
     if ctx.debug:
         print('rule@', rule.linenum)
         print('broadness(e):', rule.match_broadness)
@@ -471,14 +484,23 @@ def number_is_palindrome(n, nbytes):
     return False
 
 def nativebyteorder_warn(ctx, fctx, rule):
+    # Don't warn if an ancestor rule already warned.
+    # The theory is that if a rule relies on native byte order,
+    # having its children also do so might be the least bad thing
+    # thing to do.
+    # This logic isn't perfect, but it reduces the noise, and there
+    # will still be at least one warning per offending ruleset.
+    if rule.nbo_warning_handled:
+        return
+
     rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
 
     if rule.fdatatypeinfo is None:
-        return False
+        return
     if not rule.fdatatypeinfo.isnumber:
-        return False
+        return
     if not rule.fdatatypeinfo.nbo:
-        return False
+        return
 
     if rule.typefield.startswith('u'):
         type_is_unsigned = True
@@ -545,11 +567,9 @@ def nativebyteorder_warn(ctx, fctx, rule):
             return
 
     # TODO: Whitelist complex palindromic rules.
-    # Note: There are some rules that intentionally print things like
-    #   "native byte-order" or "byte-swapped", but IMHO such rules
-    #   deserve a warning.
     emit_warning(ctx, fctx, rule,
         'Pattern might depend on platform byte order')
+    rule.nbo_warning_handled = True
 
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
