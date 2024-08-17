@@ -585,10 +585,46 @@ def nativebyteorder_warn(ctx, fctx, rule):
         'Pattern might depend on platform byte order')
     rule.nbo_warning_handled = True
 
+def signed_with_percentu_warn(ctx, fctx, rule):
+    # For the purposes of printing, a 1- or 2-byte signed int apparently
+    # gets promoted to a 4-byte signed int, then reinterpreted as an
+    # unsigned 4-byte int if %u is used.
+    # For example, a byte value 0xff will be printed not as "255" or "-1",
+    # but as "4294967295".
+    # This test will have false positives (a previous test might have
+    # ensured the value is positive), but even then maybe this mismatch
+    # ought to be fixed.
+
+    if not rule.has_format_specifier:
+        return
+    # TODO: Also look for things like "%03u".
+    if not r'%u' in rule.message:
+        return
+
+    get_fdatatpeinfo(ctx, rule)
+
+    if rule.fdatatypeinfo is None:
+        return
+    if not rule.fdatatypeinfo.isnumber:
+        return
+    if not rule.fdatatypeinfo.issigned:
+        return
+    if rule.fdatatypeinfo.fieldsize==1:
+        tname = 'byte'
+    elif rule.fdatatypeinfo.fieldsize==2:
+        tname = 'short'
+    else:
+        return
+
+    emit_warning(ctx, fctx, rule, 'Signed %s with %%u format '
+        'might print nonsense' % (tname))
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
+    if ctx.warning_level>=2:
+        signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
@@ -838,6 +874,26 @@ def init_datatypes(ctx):
         x.isint = False
         x.nbo = True
         x.fieldsize = 8
+        ctx.fdatatypes[i] = x
+
+    items = [ 'byte', 'ubyte',
+        'dC', 'd1', 'uC', 'u1']
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = True
+        x.nbo = False
+        x.fieldsize = 1
+        ctx.fdatatypes[i] = x
+
+    items = [ 'leshort', 'uleshort', 'beshort', 'ubeshort',
+        'lemsdosdate', 'ulemsdosdate', 'bemsdostime', 'ubeumsdostime' ]
+    for i in items:
+        x = fdatatype()
+        x.isnumber = True
+        x.isint = True
+        x.nbo = False
+        x.fieldsize = 2
         ctx.fdatatypes[i] = x
 
     for k, v in ctx.fdatatypes.items():
