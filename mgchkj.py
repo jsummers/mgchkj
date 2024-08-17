@@ -83,6 +83,7 @@ class rule_context:
         # Number of descendants with a starter message,
         # by match 'broadness'.
         rule.num_dsc_with_sm_by_br = [0, 0, 0]
+        rule.looked_for_fdatatypeinfo = False
         rule.fdatatypeinfo = None
         rule.nbo_warning_handled = False
 
@@ -491,6 +492,14 @@ def number_is_palindrome(n, nbytes):
             return True
     return False
 
+def get_fdatatpeinfo(ctx, rule):
+    if rule.looked_for_fdatatypeinfo:
+        return
+    rule.looked_for_fdatatypeinfo = True
+    rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
+    if rule.fdatatypeinfo is None:
+        return
+
 def nativebyteorder_warn(ctx, fctx, rule):
     # Don't warn if an ancestor rule already warned.
     # The theory is that if a rule relies on native byte order,
@@ -501,7 +510,7 @@ def nativebyteorder_warn(ctx, fctx, rule):
     if rule.nbo_warning_handled:
         return
 
-    rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
+    get_fdatatpeinfo(ctx, rule)
 
     if rule.fdatatypeinfo is None:
         return
@@ -510,10 +519,7 @@ def nativebyteorder_warn(ctx, fctx, rule):
     if not rule.fdatatypeinfo.nbo:
         return
 
-    if rule.typefield.startswith('u'):
-        type_is_unsigned = True
-    else:
-        type_is_unsigned = False
+    type_is_unsigned = not rule.fdatatypeinfo.issigned;
 
     apply_whitelist = True
 
@@ -833,6 +839,12 @@ def init_datatypes(ctx):
         x.nbo = True
         x.fieldsize = 8
         ctx.fdatatypes[i] = x
+
+    for k, v in ctx.fdatatypes.items():
+        if k.startswith('u'):
+            v.issigned = False
+        else:
+            v.issigned = True
 
 def usage():
     print("mgchkj")
