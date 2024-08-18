@@ -57,6 +57,7 @@ class context:
         ctx.val_re_base16 = re.compile('0x[0-9A-Fa-f]+$')
         ctx.firstword_lc_re = re.compile(r'([a-z][A-Za-z0-9]*)')
         ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
+        ctx.fmt_spec_re = re.compile(r'%[-.#0-9l]*([sciduoxXeEfFgG])')
         ctx.fdatatypes = {}
 
 class rule_context:
@@ -72,6 +73,7 @@ class rule_context:
         rule.message = ''
         rule.has_child = False
         rule.has_format_specifier = False
+        rule.format_specifier = ''
         rule.likely_continuation_message = False
         # 0=narrow (equality), 1=broad, 2=wildcard
         rule.match_broadness = 2
@@ -414,7 +416,7 @@ def looks_like_continuation_message(ctx, rule, msg):
     if len(msg)>=2:
         if msg[0:2]=="\\b":
             return True
-        if msg[0]=='%' and msg[1]!='s':
+        if msg[0]=='%' and rule.format_specifier!='s':
             return True
         if msg.startswith('version '):
             return True
@@ -431,8 +433,12 @@ def looks_like_continuation_message(ctx, rule, msg):
     return False
 
 def set_more_rule_properties(ctx, fctx, rule):
-    if '%' in rule.message:
-        rule.has_format_specifier = True
+    if len(rule.message)>=2:
+        m1 = ctx.fmt_spec_re.search(rule.message)
+        if m1:
+            rule.has_format_specifier = True
+            rule.format_specifier = m1.group(1)
+
     rule.likely_continuation_message = \
         looks_like_continuation_message(ctx, rule, rule.message)
 
@@ -627,8 +633,7 @@ def signed_with_percentu_warn(ctx, fctx, rule):
 
     if not rule.has_format_specifier:
         return
-    # TODO: Also look for things like "%03u".
-    if not r'%u' in rule.message:
+    if rule.format_specifier not in ['u', 'o', 'x', 'X']:
         return
 
     get_fdatatpeinfo(ctx, rule)
@@ -646,8 +651,8 @@ def signed_with_percentu_warn(ctx, fctx, rule):
     else:
         return
 
-    emit_warning(ctx, fctx, rule, 'Signed %s with %%u format '
-        'might print nonsense' % (tname))
+    emit_warning(ctx, fctx, rule, 'Signed %s with %%%s format '
+        'might print nonsense' % (tname, rule.format_specifier))
 
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
