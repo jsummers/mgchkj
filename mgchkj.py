@@ -55,6 +55,8 @@ class context:
         ctx.val_re_base8 = re.compile('0[0-7]*$')
         ctx.val_re_base10 = re.compile('[1-9][0-9]*$')
         ctx.val_re_base16 = re.compile('0x[0-9A-Fa-f]+$')
+        ctx.firstword_lc_re = re.compile(r'([a-z][A-Za-z0-9]*)')
+        ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
         ctx.fdatatypes = {}
 
 class rule_context:
@@ -245,7 +247,7 @@ def late_cmwarn_internal(ctx, fctx, rule):
     nrules_by_br = [0, 0, 0]
     may_print_starter = False
 
-    # This collectsinfo from the previous children of our
+    # This collects info from the previous children of our
     # ancestors. It doesn't count our actual ancestors, because
     # the counters are only updated right before a rule is
     # disposed of, and our ancestors are still on the stack.
@@ -383,18 +385,46 @@ def early_cmwarn_stuff(ctx, fctx, rule):
     if rule.typefield=='name':
         rule.silence_cm_warning = True
 
+# Helper function.
+# Returns True if it looks like a cont. msg.;
+# False means no info.
+def continuation_lev2_tests(ctx, rule, msg):
+    if (': ' in msg) or \
+        ('=%' in msg) or \
+        ('= %' in msg):
+        pass
+    else:
+        return False
+
+    # Likely continuation message if the first "word" starts
+    # with a lc letter and has no uc letters.
+    flag = False
+    m1 = ctx.firstword_lc_re.match(msg)
+    if m1:
+        firstword = m1.group(1)
+        m2 = ctx.no_uc_re.match(firstword)
+        if m2:
+            flag = True
+
+    if not flag:
+        return False
+    return True
+
 def looks_like_continuation_message(ctx, rule, msg):
     if len(msg)>=2:
         if msg[0:2]=="\\b":
             return True
-        elif msg[0]=='%' and msg[1]!='s':
+        if msg[0]=='%' and msg[1]!='s':
             return True
-        elif msg.startswith('version '):
+        if msg.startswith('version '):
             return True
-        elif ctx.warning_level>=2 and rule.level>0 and \
-            msg[0]>='a' and msg[0]<='z' and \
-            rule.has_format_specifier:
-            return True
+        if ctx.warning_level>=2 and \
+            rule.has_format_specifier and \
+            rule.level>0 and \
+            msg[0]>='a' and msg[0]<='z':
+            if continuation_lev2_tests(ctx, rule, msg):
+                return True
+
     if len(msg)>=1:
         if msg[0] in '(-,;:':
             return True
