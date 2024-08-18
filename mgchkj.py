@@ -26,11 +26,11 @@
 #
 # * "Pattern might depend on platform byte order"
 #   Warns about rules that might work differently on different systems.
-#   Disabled by default (need -w2), mainly because big-endian systems are
-#   uncommon nowadays, so it may not be much of an issue in practice.
 #   I acknowledge that some rules intentionally use native types to print
 #   things like "native byte-order" or "byte-swapped", but it's debatable
 #   whether that's good practice.
+#   I also acknowledge that big-endian systems are rare nowadays, so this
+#   may not be much of an issue in practice.
 #
 # Terminology note: Here, "rule" means a normal configuration line
 # in the magic file: anything that's not a comment, blank line, or
@@ -49,7 +49,7 @@ class context:
     def __init__(ctx):
         ctx.quieter = False
         ctx.debug = False
-        ctx.warning_level = 1
+        ctx.warning_level = 2
         ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
         # Note: We don't currently handle numbers starting with '-' or '+'.
         ctx.val_re_base8 = re.compile('0[0-7]*$')
@@ -936,7 +936,9 @@ def usage():
     print("mgchkj")
     print("Usage: mgchkj.py [options] file1 [file2...]")
     print("Options:")
-    print(" -w2  Extra warnings (Expect false positives, etc.)")
+    print(" -w1  Print fewer warnings")
+    print(" -w2  Default warning level")
+    print(" -w3  Print all warnings (currently same as -w2)")
 
 def main():
     ctx = context()
