@@ -222,8 +222,7 @@ def late_newarn_stuff(ctx, fctx, rule):
     if (not rule.has_child) and (rule.message == ''):
         ne_flag = True
 
-    if rule.typefield=='clear' or rule.typefield=='use' or \
-        rule.typefield=='indirect':
+    if rule.typefield=='use' or rule.typefield=='indirect':
         ne_flag = False
 
     if unmatchable_default:
