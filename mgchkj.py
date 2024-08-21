@@ -655,6 +655,16 @@ def signed_with_percentu_warn(ctx, fctx, rule):
     emit_warning(ctx, fctx, rule, 'Signed %s with %%%s format '
         'might print nonsense' % (tname, rule.format_specifier))
 
+def unused_type_operator_warn(ctx, fctx, rule):
+    if (not rule.has_format_specifier) and \
+        rule.typefield_operator!='' and \
+        rule.valuefield_operator=='x':
+        # This is likely intentional, if the rule is accompanied by other
+        # rules that do the same operation. But I think it's worth a warning.
+        emit_warning(ctx, fctx, rule,
+            "Unused '%s' operation in type field" % \
+            (rule.typefield_operator))
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     if ctx.warning_level>=2:
@@ -663,6 +673,8 @@ def process_rule_early(ctx, fctx, rule):
         signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, rule)
+    if ctx.warning_level>=2:
+        unused_type_operator_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
