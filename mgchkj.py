@@ -227,7 +227,9 @@ def late_newarn_stuff(ctx, fctx, rule):
         ne_flag = False
 
     if unmatchable_default:
-        ne_flag = True
+        emit_warning(ctx, fctx, rule, "Unreachable 'default' (due to "
+            "previous 'default')")
+        return
 
     if ne_flag:
         fullmsg = format_warning(ctx, fctx, rule, 'Line has no effect')
