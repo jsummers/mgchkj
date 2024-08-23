@@ -79,7 +79,7 @@ class rule_context:
         rule.match_broadness = 2
 
         rule.default_handled = False
-        rule.warnings_from_children = ''
+        rule.warnings_from_children = []
 
         rule.silence_cm_warning = False
         rule.silence_cm_warning_for_children = False
@@ -171,21 +171,21 @@ def unescape_value(t_escaped):
 #-------------------------------
 
 def del_warnings_from_children(rule):
-    rule.warnings_from_children = ''
+    rule.warnings_from_children = []
 
 def emit_and_del_warnings_from_children(rule):
-    if rule.warnings_from_children != '':
-        print(rule.warnings_from_children, end='')
+    for w in rule.warnings_from_children:
+        print(w)
     del_warnings_from_children(rule)
 
 def format_warning(ctx, fctx, rule, msg):
-    fullmsg = '%s:%d: %s [%s]\n' % \
+    fullmsg = '%s:%d: %s [%s]' % \
         (fctx.name, rule.linenum, msg, rule.text)
     return fullmsg
 
 def emit_warning(ctx, fctx, rule, msg1):
     fullmsg = format_warning(ctx, fctx, rule, msg1)
-    print(fullmsg, end='')
+    print(fullmsg)
 
 def late_newarn_stuff(ctx, fctx, rule):
     # It's important to get the order of the following operations right.
@@ -234,11 +234,11 @@ def late_newarn_stuff(ctx, fctx, rule):
         fullmsg = format_warning(ctx, fctx, rule, 'Line has no effect')
 
         if rule.parent is None:
-            print(fullmsg, end='')
+            print(fullmsg)
         else:
             if ctx.debug:
                 print('appending warning to parent')
-            rule.parent.warnings_from_children += fullmsg
+            rule.parent.warnings_from_children.append(fullmsg)
 
 # Invoke the warning, if needed.
 def late_cmwarn_internal(ctx, fctx, rule):
@@ -278,7 +278,7 @@ def late_cmwarn_internal(ctx, fctx, rule):
     if ne_warn:
         fullmsg = format_warning(ctx, fctx, rule, \
             "Continuation message might be printed first")
-        print(fullmsg, end='')
+        print(fullmsg)
 
 def late_cmwarn_stuff(ctx, fctx, rule):
     if ctx.debug:
@@ -337,9 +337,6 @@ def late_cmwarn_stuff(ctx, fctx, rule):
 def finish_rule(ctx, fctx, rule):
     if ctx.debug:
         print("pop rule@%d" % (rule.linenum))
-
-    if rule.parent is not None:
-        rule.parent.has_child = True
 
     late_newarn_stuff(ctx, fctx, rule)
     late_cmwarn_stuff(ctx, fctx, rule)
@@ -814,6 +811,7 @@ def one_line(ctx, fctx, line_text):
 
     if rule.level>0:
         rule.parent = fctx.rule_stack[rule.level-1]
+        rule.parent.has_child = True
     else:
         rule.parent = None
 
