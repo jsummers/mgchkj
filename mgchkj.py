@@ -178,6 +178,11 @@ def emit_and_del_warnings_from_children(rule):
         print(w)
     del_warnings_from_children(rule)
 
+def format_warning2(fctx, msg, line_text):
+    fullmsg = '%s:%d: %s [%s]' % \
+        (fctx.name, fctx.linenum, msg, line_text)
+    return fullmsg
+
 def format_warning(ctx, fctx, rule, msg):
     fullmsg = '%s:%d: %s [%s]' % \
         (fctx.name, rule.linenum, msg, rule.text)
@@ -479,12 +484,16 @@ def regexnul_warn(ctx, fctx, rule):
     if '\x00' in val_u:
         emit_warning(ctx, fctx, rule, 'Regex might be truncated by NUL byte')
 
-def nonascii_warn(ctx, fctx, rule):
-    for i in range(len(rule.text)):
-        n = ord(rule.text[i])
+# Returns 0=ascii, 1=utf-8, 2=unknown
+def guess_line_encoding(s):
+    for i in range(len(s)):
+        n = ord(s[i])
         if n>=127:
-            emit_warning(ctx, fctx, rule, 'Line has non-ASCII characters')
-            return
+            if n==0xfffd:
+                return 2
+            else:
+                return 1
+    return 0
 
 def spacecomma_warn(ctx, fctx, rule):
     if len(rule.message)<1 or rule.level==0:
@@ -669,8 +678,6 @@ def process_rule_early(ctx, fctx, rule):
     if ctx.warning_level>=2:
         signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
-        nonascii_warn(ctx, fctx, rule)
-    if ctx.warning_level>=2:
         unused_type_operator_warn(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
@@ -793,8 +800,36 @@ def parse_one_line(ctx, fctx, line_text):
 
     return rule
 
+def nonascii_warn(ctx, fctx, line_text):
+    n = guess_line_encoding(line_text)
+
+    # I don't know what encoding these files are supposed to use.
+    # We warn about anything not UTF-8-compatible, and with -w3 about
+    # anything not ASCII.
+    if n==0:
+        return
+    if n==1 and ctx.warning_level<3:
+        return
+
+    if n==1:
+        str="probably UTF-8"
+    else:
+        str="probably not UTF-8"
+    fullmsg = format_warning2(fctx, \
+        "Line has non-ASCII characters (%s)" % (str), line_text)
+    print(fullmsg)
+
+# Checkers that also apply to comment lines, etc.
+def anyline_tests(ctx, fctx, line_text):
+    if ctx.warning_level>=2:
+        nonascii_warn(ctx, fctx, line_text)
+
 def one_line(ctx, fctx, line_text):
     rule = parse_one_line(ctx, fctx, line_text)
+
+    if len(line_text)>0:
+        anyline_tests(ctx, fctx, line_text)
+
     if rule is None:
         return
 
@@ -954,7 +989,7 @@ def usage():
     print("Options:")
     print(" -w1  Print fewer warnings")
     print(" -w2  Default warning level")
-    print(" -w3  Print all warnings (currently same as -w2)")
+    print(" -w3  Print all warnings")
 
 def main():
     ctx = context()
