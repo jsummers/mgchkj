@@ -37,20 +37,27 @@
 # special "!" line.
 
 import sys
+import copy
 import re
 
 class MCJFileLevelException(Exception):
     pass
 
 class fdatatype:
-    pass
+    def __init__(self):
+        self.isnumber = False
+        self.isint = False
+        self.isunsigned = False
+        self.nbo = False
+        self.compat_type = False
+        self.fieldsize = 0
 
 class context:
     def __init__(ctx):
         ctx.quieter = False
         ctx.debug = False
         ctx.warning_level = 2
-        ctx.type_re1 = re.compile('([a-zA-Z0-9_]+)([-+&|%*^])')
+        ctx.type_re1 = re.compile(r'([a-zA-Z0-9_]+)([\-+/\&|%*\~^])(.*)$')
         # Note: We don't currently handle numbers starting with '-' or '+'.
         ctx.val_re_base8 = re.compile('0[0-7]*$')
         ctx.val_re_base10 = re.compile('[1-9][0-9]*$')
@@ -68,6 +75,7 @@ class rule_context:
         rule.text = ''
         rule.typefield = ''
         rule.typefield_operator = ''
+        rule.typefield_operand = ''
         rule.valuefield = ''
         rule.valuefield_operator = '='
         rule.message = ''
@@ -87,7 +95,6 @@ class rule_context:
         # Number of descendants with a starter message,
         # by match 'broadness'.
         rule.num_dsc_with_sm_by_br = [0, 0, 0]
-        rule.looked_for_fdatatypeinfo = False
         rule.fdatatypeinfo = None
         rule.nbo_warning_handled = False
 
@@ -536,12 +543,7 @@ def number_is_palindrome(n, nbytes):
     return False
 
 def get_fdatatpeinfo(ctx, rule):
-    if rule.looked_for_fdatatypeinfo:
-        return
-    rule.looked_for_fdatatypeinfo = True
     rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
-    if rule.fdatatypeinfo is None:
-        return
 
 def nativebyteorder_warn(ctx, fctx, rule):
     # Don't warn if an ancestor rule already warned.
@@ -553,8 +555,6 @@ def nativebyteorder_warn(ctx, fctx, rule):
     if rule.nbo_warning_handled:
         return
 
-    get_fdatatpeinfo(ctx, rule)
-
     if rule.fdatatypeinfo is None:
         return
     if not rule.fdatatypeinfo.isnumber:
@@ -562,7 +562,7 @@ def nativebyteorder_warn(ctx, fctx, rule):
     if not rule.fdatatypeinfo.nbo:
         return
 
-    type_is_unsigned = not rule.fdatatypeinfo.issigned;
+    type_is_unsigned = rule.fdatatypeinfo.isunsigned;
 
     apply_whitelist = True
 
@@ -643,13 +643,11 @@ def signed_with_percentu_warn(ctx, fctx, rule):
     if rule.format_specifier not in ['u', 'o', 'x', 'X']:
         return
 
-    get_fdatatpeinfo(ctx, rule)
-
     if rule.fdatatypeinfo is None:
         return
     if not rule.fdatatypeinfo.isnumber:
         return
-    if not rule.fdatatypeinfo.issigned:
+    if rule.fdatatypeinfo.isunsigned:
         return
     if rule.fdatatypeinfo.fieldsize==1:
         tname = 'byte'
@@ -662,6 +660,12 @@ def signed_with_percentu_warn(ctx, fctx, rule):
         'might print nonsense' % (tname, rule.format_specifier))
 
 def unused_type_operator_warn(ctx, fctx, rule):
+    # This check only applies to numeric types.
+    if rule.fdatatypeinfo is None:
+        return
+    if not rule.fdatatypeinfo.isnumber:
+        return
+
     if (not rule.has_format_specifier) and \
         rule.typefield_operator!='' and \
         rule.valuefield_operator=='x':
@@ -673,6 +677,7 @@ def unused_type_operator_warn(ctx, fctx, rule):
 
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
+    get_fdatatpeinfo(ctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
@@ -778,14 +783,11 @@ def parse_one_line(ctx, fctx, line_text):
     rule.text = line_text
 
     rule.typefield = field[1]
-
-    if '/' in rule.typefield:
-        rule.typefield = (rule.typefield.split('/', 1))[0]
-
     m1 = ctx.type_re1.match(rule.typefield)
     if m1:
         rule.typefield = m1.group(1)
         rule.typefield_operator = m1.group(2)
+        rule.typefield_operand = m1.group(3)
 
     if field[2]=='x':
         rule.valuefield = ''
@@ -906,82 +908,105 @@ def onefile(ctx, fn):
         fctx.inf.close()
 
 def init_datatypes(ctx):
-    items = [ 'short', 'ushort',
-        'dS', 'd2', 'uS', 'u2'
-        'msdosdate', 'umsdosdate', 'msdostime', 'umsdostime' ]
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = True
-        x.nbo = True
-        x.fieldsize = 2
-        ctx.fdatatypes[i] = x
+    items = [
+        'byte i1',
+        'dC i1C',
+        'd1 i1C',
+        'uC i1C',
+        'u1 i1C',
+        'short i2n',
+        'dS i2nC',
+        'd2 i2nC',
+        'uS i2nC',
+        'u2 i2nC',
+        'leshort i2',
+        'beshort i2',
+        'beshort i2',
+        'leshort i2',
+        'msdosdate i2n',
+        'msdostime i2n',
+        'bemsdosdate i2',
+        'bemsdostime i2',
+        'lemsdosdate i2',
+        'lemsdostime i2',
+        'long i4n',
+        'dI i4nC',
+        'dL i4nC',
+        'd4 i4nC',
+        'd i4nC',
+        'uI i4nC',
+        'uL i4nC',
+        'u4 i4nC',
+        'u i4nC',
+        'belong i4',
+        'lelong i4',
+        'melong i4',
+        'date i4n',
+        'ldate i4n',
+        'bedate i4',
+        'ledate i4',
+        'beldate i4',
+        'leldate i4',
+        'medate i4',
+        'meldate i4',
+        'quad i8n',
+        'dQ i8nC',
+        'd8 i8nC',
+        'uQ i8nC',
+        'u8 i8nC',
+        'lequad i8',
+        'bequad i8',
+        'offset i8',
+        'qdate i8n',
+        'qldate i8n',
+        'qwdate i8n',
+        'beqwdate i8',
+        'leqwdate i8',
+        'leqdate i8',
+        'beqdate i8',
+        'leqldate i8',
+        'beqldate i8',
+        'float f4n',
+        'befloat f4',
+        'lefloat f4',
+        'double f8n',
+        'bedouble f8',
+        'ledouble f8' ]
 
-    items = [ 'long', 'ulong',
-        'dI', 'dL', 'd4', 'uI', 'uL', 'u4',
-        'date', 'udate', 'ldate', 'uldate' ]
-    for i in items:
+    for iraw in items:
+        ilist = iraw.split(' ', 1)
         x = fdatatype()
-        x.isnumber = True
-        x.isint = True
-        x.nbo = True
-        x.fieldsize = 4
-        ctx.fdatatypes[i] = x
+        if 'i' in ilist[1]:
+            x.isnumber = True
+            x.isint = True
+        if 'f' in ilist[1]:
+            x.isnumber = True
+        if 'n' in ilist[1]:
+            x.nbo = True
+        if '1' in ilist[1]:
+            x.fieldsize = 1
+        if '2' in ilist[1]:
+            x.fieldsize = 2
+        if '4' in ilist[1]:
+            x.fieldsize = 4
+        if '8' in ilist[1]:
+            x.fieldsize = 8
+        if 'C' in ilist[1]:
+            x.compat_type = True
 
-    items = [ 'quad', 'uquad',
-        'dQ', 'd8', 'uQ', 'u8',
-        'qdate', 'uqdate', 'qldate', 'uqldate', 'qwdate', 'uqwdate' ]
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = True
-        x.nbo = True
-        x.fieldsize = 8
-        ctx.fdatatypes[i] = x
-
-    items = [ 'float' ]
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = False
-        x.nbo = True
-        x.fieldsize = 4
-        ctx.fdatatypes[i] = x
-
-    items = [ 'double' ]
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = False
-        x.nbo = True
-        x.fieldsize = 8
-        ctx.fdatatypes[i] = x
-
-    items = [ 'byte', 'ubyte',
-        'dC', 'd1', 'uC', 'u1']
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = True
-        x.nbo = False
-        x.fieldsize = 1
-        ctx.fdatatypes[i] = x
-
-    items = [ 'leshort', 'uleshort', 'beshort', 'ubeshort',
-        'lemsdosdate', 'ulemsdosdate', 'bemsdostime', 'ubeumsdostime' ]
-    for i in items:
-        x = fdatatype()
-        x.isnumber = True
-        x.isint = True
-        x.nbo = False
-        x.fieldsize = 2
-        ctx.fdatatypes[i] = x
-
-    for k, v in ctx.fdatatypes.items():
-        if k.startswith('u'):
-            v.issigned = False
+        if x.compat_type:
+            if ilist[0].startswith('u'):
+                x.isunsigned = True
+            else:
+                x.isunsigned = False
+            ctx.fdatatypes[ilist[0]] = x
         else:
-            v.issigned = True
+            # 'u' prefix is always legal, except for compatibility types.
+            y = copy.copy(x)
+            x.isunsigned = False
+            y.isunsigned = True
+            ctx.fdatatypes[ilist[0]] = x
+            ctx.fdatatypes['u' + ilist[0]] = y
 
 def usage():
     print("mgchkj")
