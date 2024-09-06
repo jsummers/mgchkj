@@ -50,6 +50,8 @@ class fdatatype:
         self.isunsigned = False
         self.nbo = False
         self.compat_type = False
+        self.u_is_useless = False
+        self.u_is_dubious = False
         self.fieldsize = 0
 
 class context:
@@ -675,9 +677,29 @@ def unused_type_operator_warn(ctx, fctx, rule):
             "Unused '%s' operation in type field" % \
             (rule.typefield_operator))
 
+def datatype_warnings(ctx, fctx, rule):
+    # Normally, 'file' will error out if there's an invalid type,
+    # so this checker is not all that useful.
+    # But file's parser is more permissive than ours (most whitespace
+    # is optional), so we may catch some errors that happened to be
+    # syntactially valid.
+    if rule.fdatatypeinfo is None:
+        emit_warning(ctx, fctx, rule,
+            "Unrecognized type (or missing usual whitespace)")
+        return
+
+    if (ctx.warning_level>=3) and \
+        (not rule.fdatatypeinfo.compat_type) and \
+        rule.fdatatypeinfo.isunsigned:
+        if rule.fdatatypeinfo.u_is_useless or \
+            rule.fdatatypeinfo.u_is_dubious:
+            emit_warning(ctx, fctx, rule,
+                "Prefix 'u' on type '%s' is unusual" % (rule.typefield[1:]))
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     get_fdatatpeinfo(ctx, rule)
+    datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
@@ -908,6 +930,12 @@ def onefile(ctx, fn):
         fctx.inf.close()
 
 def init_datatypes(ctx):
+    # i=integer, number
+    # f=floating point, number
+    # C=compatibility int type
+    # 1,2,4,8=Field size
+    # V='u' prefix is useless (TODO: Figure out when u makes sense.)
+    # v='u' prefix is dubious
     items = [
         'byte i1',
         'dC i1C',
@@ -923,12 +951,12 @@ def init_datatypes(ctx):
         'beshort i2',
         'beshort i2',
         'leshort i2',
-        'msdosdate i2n',
-        'msdostime i2n',
-        'bemsdosdate i2',
-        'bemsdostime i2',
-        'lemsdosdate i2',
-        'lemsdostime i2',
+        'msdosdate i2nv',
+        'msdostime i2nv',
+        'bemsdosdate i2v',
+        'bemsdostime i2v',
+        'lemsdosdate i2v',
+        'lemsdostime i2v',
         'long i4n',
         'dI i4nC',
         'dL i4nC',
@@ -966,12 +994,30 @@ def init_datatypes(ctx):
         'beqdate i8',
         'leqldate i8',
         'beqldate i8',
-        'float f4n',
-        'befloat f4',
-        'lefloat f4',
-        'double f8n',
-        'bedouble f8',
-        'ledouble f8' ]
+        'float f4nv',
+        'befloat f4v',
+        'lefloat f4v',
+        'double f8nv',
+        'bedouble f8v',
+        'ledouble f8v',
+        'name V',
+        'use V',
+        'clear V',
+        'default V',
+        'indirect V',
+        'string v',
+        'pstring v',
+        'regex v',
+        'bestring16 v',
+        'lestring16 v',
+        'search v',
+        'guid v',
+        'der ',
+        'bevarint ',
+        'levarint ',
+        'octal ',
+        'leid3 ',
+        'beid3 ' ]
 
     for iraw in items:
         ilist = iraw.split(' ', 1)
@@ -993,6 +1039,10 @@ def init_datatypes(ctx):
             x.fieldsize = 8
         if 'C' in ilist[1]:
             x.compat_type = True
+        if 'V' in ilist[1]:
+            x.u_is_useless = True
+        if 'v' in ilist[1]:
+            x.u_is_dubious = True
 
         if x.compat_type:
             if ilist[0].startswith('u'):
