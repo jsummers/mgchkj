@@ -240,7 +240,7 @@ def late_newarn_stuff(ctx, fctx, rule):
         ne_flag = False
 
     if unmatchable_default:
-        emit_warning(ctx, fctx, rule, "Unreachable 'default' (due to "
+        emit_warning(ctx, fctx, rule, "Unmatchable 'default' (due to "
             "previous 'default')")
         return
 
