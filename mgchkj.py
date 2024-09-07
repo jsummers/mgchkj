@@ -52,6 +52,7 @@ class fdatatype:
         self.compat_type = False
         self.u_is_useless = False
         self.u_is_dubious = False
+        self.bt_modifiers = False
         self.fieldsize = 0
 
 class context:
@@ -677,6 +678,47 @@ def unused_type_operator_warn(ctx, fctx, rule):
             "Unused '%s' operation in type field" % \
             (rule.typefield_operator))
 
+def ishexdigit(s):
+    return s.isdecimal() or (s>="a" and s<="f") or \
+        (s>="A" and s<="F")
+
+# The options can have a hex number embedded in them,
+# so a 'b' might be a hex digit, not the 'b' modifier.
+# I don't see any way to cheat -- we'll have to parse it.
+def sanitize_string_opts(s1):
+    s2 = ''
+    in_decnum = False
+    in_hexnum = False
+    skip1 = False
+
+    for i in range(len(s1)):
+        a = s1[i]
+        if skip1:
+            a = ""
+            skipn1 = False
+        elif in_decnum:
+            if s1[i].isdecimal():
+                a = ""
+            else:
+                in_decnum = False
+        elif in_hexnum:
+            if ishexdigit(s1[i]):
+                a = ""
+            else:
+                in_hexnum = False
+        else:
+            if s1[i].isdecimal():
+                if s1[i]=="0" and (i+1<len(s1)) and \
+                    (s1[i+1]=="x" or s1[i+1]=="X"):
+                    in_hexnum = True
+                    skip1 = True
+                else:
+                    in_decnum = True
+                a = "#"
+        s2 += a
+
+    return s2
+
 def datatype_warnings(ctx, fctx, rule):
     # Normally, 'file' will error out if there's an invalid type,
     # so this checker is not all that useful.
@@ -687,6 +729,19 @@ def datatype_warnings(ctx, fctx, rule):
         emit_warning(ctx, fctx, rule,
             "Unrecognized type (or missing usual whitespace)")
         return
+
+    if (ctx.warning_level>=3) and rule.level>0 and \
+        rule.typefield_operator=='/' and \
+        rule.fdatatypeinfo.bt_modifiers:
+        opts = sanitize_string_opts(rule.typefield_operand)
+        for flg in ['b', 't']:
+            if flg in opts:
+                # I'm not 100% sure this warning is always correct. It doesn't
+                # seem to be made clear by the documentation, and the source
+                # code is hard to understand. There is the comment "(set only
+                # for top-level tests)" in file.h.
+                emit_warning(ctx, fctx, rule,
+                    "Modifier /%s has no effect at level>0" % (flg))
 
     if (ctx.warning_level>=3) and \
         (not rule.fdatatypeinfo.compat_type) and \
@@ -936,6 +991,7 @@ def init_datatypes(ctx):
     # 1,2,4,8=Field size
     # V='u' prefix is useless (TODO: Figure out when u makes sense.)
     # v='u' prefix is dubious
+    # T=allows /b & /t modifiers
     items = [
         'byte i1',
         'dC i1C',
@@ -1005,12 +1061,12 @@ def init_datatypes(ctx):
         'clear V',
         'default V',
         'indirect V',
-        'string v',
-        'pstring v',
-        'regex v',
-        'bestring16 v',
-        'lestring16 v',
-        'search v',
+        'string vT',
+        'pstring vT',
+        'regex vT',
+        'bestring16 vT',
+        'lestring16 vT',
+        'search vT',
         'guid v',
         'der ',
         'bevarint ',
@@ -1043,6 +1099,8 @@ def init_datatypes(ctx):
             x.u_is_useless = True
         if 'v' in ilist[1]:
             x.u_is_dubious = True
+        if 'T' in ilist[1]:
+            x.bt_modifiers = True
 
         if x.compat_type:
             if ilist[0].startswith('u'):
