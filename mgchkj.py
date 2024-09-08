@@ -48,6 +48,7 @@ class fdatatype:
         self.isnumber = False
         self.isint = False
         self.isunsigned = False
+        self.standard_u_prefix = False
         self.nbo = False
         self.compat_type = False
         self.u_is_useless = False
@@ -76,7 +77,8 @@ class rule_context:
         rule.linenum = 0
         rule.level = 0
         rule.text = ''
-        rule.typefield = ''
+        rule.typefield1 = '' # w/o modifiers
+        rule.typefield2 = '' # w/o modifiers or 'u' prefix
         rule.typefield_operator = ''
         rule.typefield_operand = ''
         rule.valuefield = ''
@@ -209,7 +211,7 @@ def late_newarn_stuff(ctx, fctx, rule):
     emit_and_del_warnings_from_children(rule)
 
     # ---- Special rule types
-    if rule.typefield=='clear':
+    if rule.typefield2=='clear':
         if rule.parent is not None:
             emit_and_del_warnings_from_children(rule.parent)
             rule.parent.default_handled = False
@@ -221,7 +223,7 @@ def late_newarn_stuff(ctx, fctx, rule):
     # match if nothing else does.)
     unmatchable_default = False
 
-    if rule.typefield=='default':
+    if rule.typefield2=='default':
         if rule.parent is not None:
             del_warnings_from_children(rule.parent)
             if rule.parent.default_handled:
@@ -237,7 +239,8 @@ def late_newarn_stuff(ctx, fctx, rule):
     if (not rule.has_child) and (rule.message == ''):
         ne_flag = True
 
-    if rule.typefield=='use' or rule.typefield=='indirect':
+    if rule.typefield2=='use' or rule.typefield2=='indirect' or \
+        (rule.fdatatypeinfo is None):
         ne_flag = False
 
     if unmatchable_default:
@@ -312,7 +315,7 @@ def late_cmwarn_stuff(ctx, fctx, rule):
             rule.parent.dsc_may_print_starter_msg = True
 
         # Maybe new flags
-        if rule.typefield=='use':
+        if rule.typefield2=='use':
             rule.parent.dsc_may_print_starter_msg = True
         elif rule.message=='':
             pass
@@ -382,7 +385,7 @@ def early_cmwarn_stuff(ctx, fctx, rule):
     # I'm not sure how to deal with that problem. But these
     # hacks will reduce the noise.
 
-    if rule.typefield=='use' or rule.typefield=='indirect':
+    if rule.typefield2=='use' or rule.typefield2=='indirect':
         rule.silence_cm_warning = True
         if rule.parent is not None:
             rule.parent.silence_cm_warning_for_children = True
@@ -397,7 +400,7 @@ def early_cmwarn_stuff(ctx, fctx, rule):
     if rule.message!='' and not rule.likely_continuation_message:
         rule.silence_cm_warning = True
 
-    if rule.typefield=='name':
+    if rule.typefield2=='name':
         rule.silence_cm_warning = True
 
 # Helper function.
@@ -457,7 +460,7 @@ def set_more_rule_properties(ctx, fctx, rule):
 
     if rule.valuefield_operator=='x':
         rule.match_broadness = 2
-    elif rule.typefield=='use' or rule.typefield=='name':
+    elif rule.typefield2=='use' or rule.typefield2=='name':
         rule.match_broadness = 2
     elif rule.typefield_operator=='&' or \
         rule.typefield_operator=='|' or \
@@ -488,7 +491,7 @@ def set_more_rule_properties(ctx, fctx, rule):
 # syntactically valid, there will be no error; it just won't work
 # right.
 def regexnul_warn(ctx, fctx, rule):
-    if rule.typefield != 'regex':
+    if rule.typefield2 != 'regex':
         return
     val_u = unescape_value(rule.valuefield)
     if '\x00' in val_u:
@@ -546,7 +549,10 @@ def number_is_palindrome(n, nbytes):
     return False
 
 def get_fdatatpeinfo(ctx, rule):
-    rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield)
+    rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield1)
+    if rule.fdatatypeinfo is not None:
+        if rule.fdatatypeinfo.standard_u_prefix:
+            rule.typefield2 = rule.typefield1[1:]
 
 def nativebyteorder_warn(ctx, fctx, rule):
     # Don't warn if an ancestor rule already warned.
@@ -749,7 +755,7 @@ def datatype_warnings(ctx, fctx, rule):
         if rule.fdatatypeinfo.u_is_useless or \
             rule.fdatatypeinfo.u_is_dubious:
             emit_warning(ctx, fctx, rule,
-                "Prefix 'u' on type '%s' is unusual" % (rule.typefield[1:]))
+                "Prefix 'u' on type '%s' is unusual" % (rule.typefield2))
 
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
@@ -859,12 +865,13 @@ def parse_one_line(ctx, fctx, line_text):
     rule.level = level
     rule.text = line_text
 
-    rule.typefield = field[1]
-    m1 = ctx.type_re1.match(rule.typefield)
+    rule.typefield1 = field[1]
+    m1 = ctx.type_re1.match(rule.typefield1)
     if m1:
-        rule.typefield = m1.group(1)
+        rule.typefield1 = m1.group(1)
         rule.typefield_operator = m1.group(2)
         rule.typefield_operand = m1.group(3)
+    rule.typefield2 = rule.typefield1 # default
 
     if field[2]=='x':
         rule.valuefield = ''
@@ -994,15 +1001,15 @@ def init_datatypes(ctx):
     # T=allows /b & /t modifiers
     items = [
         'byte i1',
-        'dC i1C',
-        'd1 i1C',
-        'uC i1C',
-        'u1 i1C',
+        'dC 1C',
+        'd1 1C',
+        'uC 1C',
+        'u1 1C',
         'short i2n',
-        'dS i2nC',
-        'd2 i2nC',
-        'uS i2nC',
-        'u2 i2nC',
+        'dS 2nC',
+        'd2 2nC',
+        'uS 2nC',
+        'u2 2nC',
         'leshort i2',
         'beshort i2',
         'beshort i2',
@@ -1014,14 +1021,14 @@ def init_datatypes(ctx):
         'lemsdosdate i2v',
         'lemsdostime i2v',
         'long i4n',
-        'dI i4nC',
-        'dL i4nC',
-        'd4 i4nC',
-        'd i4nC',
-        'uI i4nC',
-        'uL i4nC',
-        'u4 i4nC',
-        'u i4nC',
+        'dI 4nC',
+        'dL 4nC',
+        'd4 4nC',
+        'd 4nC',
+        'uI 4nC',
+        'uL 4nC',
+        'u4 4nC',
+        'u 4nC',
         'belong i4',
         'lelong i4',
         'melong i4',
@@ -1034,10 +1041,10 @@ def init_datatypes(ctx):
         'medate i4',
         'meldate i4',
         'quad i8n',
-        'dQ i8nC',
-        'd8 i8nC',
-        'uQ i8nC',
-        'u8 i8nC',
+        'dQ 8nC',
+        'd8 8nC',
+        'uQ 8nC',
+        'u8 8nC',
         'lequad i8',
         'bequad i8',
         'offset i8',
@@ -1095,6 +1102,9 @@ def init_datatypes(ctx):
             x.fieldsize = 8
         if 'C' in ilist[1]:
             x.compat_type = True
+            x.isnumber = True
+            x.isint = True
+            x.standard_u_prefix = False
         if 'V' in ilist[1]:
             x.u_is_useless = True
         if 'v' in ilist[1]:
@@ -1112,7 +1122,9 @@ def init_datatypes(ctx):
             # 'u' prefix is always legal, except for compatibility types.
             y = copy.copy(x)
             x.isunsigned = False
+            x.standard_u_prefix = False
             y.isunsigned = True
+            y.standard_u_prefix = True
             ctx.fdatatypes[ilist[0]] = x
             ctx.fdatatypes['u' + ilist[0]] = y
 
