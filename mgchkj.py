@@ -499,13 +499,16 @@ def regexnul_warn(ctx, fctx, rule):
 
 # Returns 0=ascii, 1=utf-8, 2=unknown
 def guess_line_encoding(s):
+    utf8_flag = False
     for i in range(len(s)):
         n = ord(s[i])
         if n>=127:
             if n==0xfffd:
                 return 2
             else:
-                return 1
+                utf8_flag = True
+    if utf8_flag:
+        return 1
     return 0
 
 def spacecomma_warn(ctx, fctx, rule):
