@@ -785,24 +785,24 @@ def parse_one_line(ctx, fctx, line_text):
     #  7=reading message
     # Q. Could the lines be parsed with REGEXPs instead?
     # A. Probably.
-    fstate = 0
+    fstate = 1
     escape_flag = False
     internal_whitespace_flag = False
     level = 0
     field = [ '', '', '', '' ]
 
+    # (Whitespace at the start of a line is *not* ignored.)
+    if len(line_text)==0:
+        return None
+    if line_text[0:1]=='#':
+        return None
+    if line_text[0:2]=='!:':
+        return None
+
     for i in range(len(line_text)):
         ch = line_text[i]
 
         isws = (ch=='\x20')
-        if fstate==0:
-            if isws:
-                continue
-            if ch=='#':
-                break
-            if ch=='!':
-                break
-            fstate = 1
 
         if fstate==1:
             if isws:
@@ -855,9 +855,6 @@ def parse_one_line(ctx, fctx, line_text):
 
         if fstate==7:
             field[3] += ch
-
-    if fstate==0:  # comment or blank line or special line
-        return None
 
     if ctx.debug:
         print("%d|%d|%d|%s|%s|%s|%s|" % (fctx.linenum, level, \
