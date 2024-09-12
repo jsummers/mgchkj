@@ -53,6 +53,7 @@ class fdatatype:
         self.compat_type = False
         self.u_is_useless = False
         self.u_is_dubious = False
+        self.has_string_modifiers = False
         self.bt_modifiers = False
         self.fieldsize = 0
 
@@ -81,6 +82,7 @@ class rule_context:
         rule.typefield2 = '' # w/o modifiers or 'u' prefix
         rule.typefield_operator = ''
         rule.typefield_operand = ''
+        rule.sanitized_string_opts = ''
         rule.valuefield = ''
         rule.valuefield_operator = '='
         rule.message = ''
@@ -551,7 +553,7 @@ def number_is_palindrome(n, nbytes):
             return True
     return False
 
-def get_fdatatpeinfo(ctx, rule):
+def get_fdatatypeinfo(ctx, rule):
     rule.fdatatypeinfo = ctx.fdatatypes.get(rule.typefield1)
     if rule.fdatatypeinfo is not None:
         if rule.fdatatypeinfo.standard_u_prefix:
@@ -694,7 +696,8 @@ def ishexdigit(s):
 # The options can have a hex number embedded in them,
 # so a 'b' might be a hex digit, not the 'b' modifier.
 # I don't see any way to cheat -- we'll have to parse it.
-def sanitize_string_opts(s1):
+def sanitize_string_opts(rule):
+    s1 = rule.typefield_operand
     s2 = ''
     in_decnum = False
     in_hexnum = False
@@ -723,10 +726,10 @@ def sanitize_string_opts(s1):
                     skip1 = True
                 else:
                     in_decnum = True
-                a = "#"
+                a = "0" # Collapse numbers to "0"
         s2 += a
 
-    return s2
+    rule.sanitized_string_opts = s2
 
 def datatype_warnings(ctx, fctx, rule):
     # Normally, 'file' will error out if there's an invalid type,
@@ -742,7 +745,7 @@ def datatype_warnings(ctx, fctx, rule):
     if (ctx.warning_level>=3) and rule.level>0 and \
         rule.typefield_operator=='/' and \
         rule.fdatatypeinfo.bt_modifiers:
-        opts = sanitize_string_opts(rule.typefield_operand)
+        opts = rule.sanitized_string_opts
         for flg in ['b', 't']:
             if flg in opts:
                 # I'm not 100% sure this warning is always correct. It doesn't
@@ -762,7 +765,11 @@ def datatype_warnings(ctx, fctx, rule):
 
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
-    get_fdatatpeinfo(ctx, rule)
+    get_fdatatypeinfo(ctx, rule)
+    if rule.fdatatypeinfo is not None and \
+        rule.fdatatypeinfo.has_string_modifiers:
+        sanitize_string_opts(rule)
+
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
@@ -998,6 +1005,7 @@ def init_datatypes(ctx):
     # 1,2,4,8=Field size
     # V='u' prefix is useless (TODO: Figure out when u makes sense.)
     # v='u' prefix is dubious
+    # S=has "string"-style modifiers
     # T=allows /b & /t modifiers
     items = [
         'byte i1',
@@ -1063,22 +1071,22 @@ def init_datatypes(ctx):
         'double f8nv',
         'bedouble f8v',
         'ledouble f8v',
-        'name V',
-        'use V',
+        'name VS',
+        'use VS',
         'clear V',
         'default V',
         'indirect V',
-        'string vT',
-        'pstring vT',
-        'regex vT',
-        'bestring16 vT',
-        'lestring16 vT',
-        'search vT',
+        'string vST',
+        'pstring vST',
+        'regex vST',
+        'bestring16 vST',
+        'lestring16 vST',
+        'search vST',
         'guid v',
         'der ',
         'bevarint ',
         'levarint ',
-        'octal ',
+        'octal S',
         'leid3 ',
         'beid3 ' ]
 
@@ -1109,6 +1117,8 @@ def init_datatypes(ctx):
             x.u_is_useless = True
         if 'v' in ilist[1]:
             x.u_is_dubious = True
+        if 'S' in ilist[1]:
+            x.has_string_modifiers = True
         if 'T' in ilist[1]:
             x.bt_modifiers = True
 
