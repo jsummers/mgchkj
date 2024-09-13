@@ -69,7 +69,7 @@ class context:
         ctx.val_re_base16 = re.compile('0x[0-9A-Fa-f]+$')
         ctx.firstword_lc_re = re.compile(r'([a-z][A-Za-z0-9]*)')
         ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
-        ctx.fmt_spec_re = re.compile(r'%[-.#0-9l]*([sciduoxXeEfFgG])')
+        ctx.fmt_spec_re = re.compile(r'%([-.#0-9l]*)([sciduoxXeEfFgG])')
         ctx.fdatatypes = {}
 
 class rule_context:
@@ -89,6 +89,7 @@ class rule_context:
         rule.has_child = False
         rule.has_format_specifier = False
         rule.format_specifier = ''
+        rule.format_spec_flags = ''
         rule.likely_continuation_message = False
         # 0=narrow (equality), 1=broad, 2=wildcard
         rule.match_broadness = 2
@@ -455,7 +456,8 @@ def set_more_rule_properties(ctx, fctx, rule):
         m1 = ctx.fmt_spec_re.search(rule.message)
         if m1:
             rule.has_format_specifier = True
-            rule.format_specifier = m1.group(1)
+            rule.format_spec_flags = m1.group(1)
+            rule.format_specifier = m1.group(2)
 
     rule.likely_continuation_message = \
         looks_like_continuation_message(ctx, rule, rule.message)
@@ -763,6 +765,17 @@ def datatype_warnings(ctx, fctx, rule):
             emit_warning(ctx, fctx, rule,
                 "Prefix 'u' on type '%s' is unusual" % (rule.typefield2))
 
+def string16_warnings(ctx, fctx, rule):
+    if ctx.warning_level<3:
+        return
+    if rule.fdatatypeinfo is None:
+        return
+    if rule.typefield2!='lestring16' and rule.typefield2!='bestring16':
+        return
+    if '0' in rule.sanitized_string_opts:
+        emit_warning(ctx, fctx, rule,
+            "Modifier /<width> might not be implemented for string16 types")
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     get_fdatatypeinfo(ctx, rule)
@@ -777,6 +790,7 @@ def process_rule_early(ctx, fctx, rule):
         signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         unused_type_operator_warn(ctx, fctx, rule)
+    string16_warnings(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
