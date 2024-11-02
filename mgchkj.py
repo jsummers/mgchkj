@@ -501,11 +501,18 @@ def regexnul_warn(ctx, fctx, rule):
     if '\x00' in val_u:
         emit_warning(ctx, fctx, rule, 'Regex might be truncated by NUL byte')
 
+def line_has_ctrl_chars(s):
+    for ch in s:
+        n = ord(ch)
+        if n==127 or (n<32 and n!=9):
+            return 1
+    return 0
+
 # Returns 0=ascii, 1=utf-8, 2=unknown
 def guess_line_encoding(s):
     utf8_flag = False
-    for i in range(len(s)):
-        n = ord(s[i])
+    for ch in s:
+        n = ord(ch)
         if n>=127:
             if n==0xfffd:
                 return 2
@@ -907,6 +914,14 @@ def parse_one_line(ctx, fctx, line_text):
 
     return rule
 
+def ctrlchar_warn(ctx, fctx, line_text):
+    if not line_has_ctrl_chars(line_text):
+        return
+
+    fullmsg = format_warning2(fctx, \
+        "Line has unexpected control characters", line_text)
+    print(fullmsg)
+
 def nonascii_warn(ctx, fctx, line_text):
     n = guess_line_encoding(line_text)
 
@@ -930,6 +945,7 @@ def nonascii_warn(ctx, fctx, line_text):
 def anyline_tests(ctx, fctx, line_text):
     if ctx.warning_level>=2:
         nonascii_warn(ctx, fctx, line_text)
+    ctrlchar_warn(ctx, fctx, line_text)
 
 def one_line(ctx, fctx, line_text):
     rule = parse_one_line(ctx, fctx, line_text)
@@ -988,7 +1004,7 @@ def preprocess_line(ctx, l1):
 def onefile_main(ctx, fctx):
     for line in fctx.inf:
         fctx.linenum += 1
-        line2 = line.rstrip('\n\r\x20\x09')
+        line2 = line.rstrip('\n\x20\x09')
         line2 = preprocess_line(ctx, line2)
         one_line(ctx, fctx, line2)
 
@@ -999,7 +1015,8 @@ def onefile(ctx, fn):
         print("# Reading", fctx.name)
 
     try:
-        fctx.inf = open(fn, "r", encoding='utf8', errors='replace')
+        fctx.inf = open(fn, "r", encoding='utf8', newline='\n', \
+            errors='replace')
     except OSError as err:
         print("Error:", err)
         return
