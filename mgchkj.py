@@ -63,10 +63,9 @@ class context:
         ctx.debug = False
         ctx.warning_level = 2
         ctx.type_re1 = re.compile(r'([a-zA-Z0-9_]+)([\-+/\&|%*\~^])(.*)$')
-        # Note: We don't currently handle numbers starting with '-' or '+'.
-        ctx.val_re_base8 = re.compile('0[0-7]*$')
-        ctx.val_re_base10 = re.compile('[1-9][0-9]*$')
-        ctx.val_re_base16 = re.compile('0x[0-9A-Fa-f]+$')
+        ctx.val_re_base8 = re.compile('[+-]?0[0-7]*$')
+        ctx.val_re_base10 = re.compile('[+-]?[1-9][0-9]*$')
+        ctx.val_re_base16 = re.compile('[+-]?0x[0-9A-Fa-f]+$')
         ctx.firstword_lc_re = re.compile(r'([a-z][A-Za-z0-9]*)')
         ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
         ctx.fmt_spec_re = re.compile(r'%([-.#0-9l]*)([sciduoxXeEfFgG])')
@@ -85,6 +84,8 @@ class rule_context:
         rule.sanitized_string_opts = ''
         rule.valuefield = ''
         rule.valuefield_operator = '='
+        rule.have_valuefield_number = False
+        rule.valuefield_number = 0
         rule.message = ''
         rule.has_child = False
         rule.has_format_specifier = False
@@ -546,6 +547,8 @@ def badquotes_warn(ctx, fctx, rule):
 
 def number_is_palindrome(n, nbytes):
     if n<0:
+        if n == -1:
+            return True
         return False
     if nbytes==2:
         if (n>>8)==(n & 0xff):
@@ -567,6 +570,40 @@ def get_fdatatypeinfo(ctx, rule):
     if rule.fdatatypeinfo is not None:
         if rule.fdatatypeinfo.standard_u_prefix:
             rule.typefield2 = rule.typefield1[1:]
+
+# Currently, this only supports integer types (not floating point)
+def parse_valuefield_number(ctx, fctx, rule):
+    if rule.fdatatypeinfo is None:
+        return
+    if not rule.fdatatypeinfo.isint:
+        return
+
+    pflag = False
+    if rule.valuefield=='0':
+        val = 0
+        pflag = True
+
+    if not pflag: # try octal
+        m1 = ctx.val_re_base8.match(rule.valuefield)
+        if m1:
+            val = int(rule.valuefield, base=8)
+            pflag = True
+
+    if not pflag: # try decimal
+        m1 = ctx.val_re_base10.match(rule.valuefield)
+        if m1:
+            val = int(rule.valuefield, base=10)
+            pflag = True
+
+    if not pflag: # try hex
+        m1 = ctx.val_re_base16.match(rule.valuefield)
+        if m1:
+            val = int(rule.valuefield, base=16)
+            pflag = True
+
+    if pflag:
+        rule.have_valuefield_number = True
+        rule.valuefield_number = val
 
 def nativebyteorder_warn(ctx, fctx, rule):
     # Don't warn if an ancestor rule already warned.
@@ -596,28 +633,9 @@ def nativebyteorder_warn(ctx, fctx, rule):
 
     val = 1 # arbitrary default
     if rule.fdatatypeinfo.isint:
-        pflag = False
-        if rule.valuefield=='0':
-            val = 0
+        if rule.have_valuefield_number:
+            val = rule.valuefield_number
             pflag = True
-
-        if not pflag: # try octal
-            m1 = ctx.val_re_base8.match(rule.valuefield)
-            if m1:
-                val = int(rule.valuefield, base=8)
-                pflag = True
-
-        if not pflag: # try decimal
-            m1 = ctx.val_re_base10.match(rule.valuefield)
-            if m1:
-                val = int(rule.valuefield, base=10)
-                pflag = True
-
-        if not pflag: # try hex
-            m1 = ctx.val_re_base16.match(rule.valuefield)
-            if m1:
-                val = int(rule.valuefield[2:], base=16)
-                pflag = True
 
     else:
         # floating point, presumably
@@ -650,6 +668,37 @@ def nativebyteorder_warn(ctx, fctx, rule):
     emit_warning(ctx, fctx, rule,
         'Pattern might depend on platform byte order')
     rule.nbo_warning_handled = True
+
+def uintrange_warn(ctx, fctx, rule):
+    if rule.fdatatypeinfo is None:
+        return
+    if not rule.fdatatypeinfo.isint:
+        return
+    if not rule.fdatatypeinfo.isunsigned:
+        return
+    if not rule.have_valuefield_number:
+        return
+
+    warn_alwaysfalse = False
+    warn_alwaystrue = False
+
+    if rule.valuefield_operator=='=':
+        if rule.valuefield_number<0:
+            warn_alwaysfalse = True
+
+    if rule.valuefield_operator=='<':
+        if rule.valuefield_number<=0:
+            warn_alwaysfalse = True
+
+    if rule.valuefield_operator=='>':
+        if rule.valuefield_number<0:
+            warn_alwaystrue = True
+
+    # I haven't figured out exactly what happens in every situation,
+    # so the warning message is noncommittal.
+    if warn_alwaysfalse or warn_alwaystrue:
+        emit_warning(ctx, fctx, rule,
+            "Dubious comparison of unsigned int to negative number")
 
 def signed_with_percentu_warn(ctx, fctx, rule):
     # For the purposes of printing, a 1- or 2-byte signed int apparently
@@ -786,6 +835,7 @@ def string16_warnings(ctx, fctx, rule):
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     get_fdatatypeinfo(ctx, rule)
+    parse_valuefield_number(ctx, fctx, rule)
     if rule.fdatatypeinfo is not None and \
         rule.fdatatypeinfo.has_string_modifiers:
         sanitize_string_opts(rule)
@@ -793,6 +843,7 @@ def process_rule_early(ctx, fctx, rule):
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
+    uintrange_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
