@@ -2,13 +2,13 @@
 #
 # mgchkj.py
 #
-# Copyright (C) 2024 by Jason Summers
+# Copyright (C) 2024-2025 by Jason Summers
 # Terms of use: MIT license
 #
 # Checker ("linter") for "magic" files used by the "file" command
 # (https://darwinsys.com/file/).
 #
-# Contact info as of 2024:
+# Contact info as of 2025:
 #  Development/website: https://github.com/jsummers/mgchkj
 #  Email: jason1@pobox.com
 #
@@ -700,6 +700,38 @@ def uintrange_warn(ctx, fctx, rule):
         emit_warning(ctx, fctx, rule,
             "Dubious comparison of unsigned int to negative number")
 
+def byte_compare_warn(ctx, fctx, rule):
+    # Should we also check types 'dC' and 'd1'? I'm undecided.
+    if rule.typefield1 != 'byte':
+        return
+    if not rule.have_valuefield_number:
+        return
+    if rule.typefield_operator!='':
+        return
+
+    warn_lt = False
+    warn_gt = False
+
+    # If the number in the "test" field is >=0x80, file does an unsigned
+    # comparison, and all is well. The "gotcha" numbers are from 0 to 0x7f.
+    if rule.valuefield_operator=='<':
+        if rule.valuefield_number>=1 and rule.valuefield_number<=0x7f:
+            warn_lt = True
+    elif rule.valuefield_operator=='>':
+        if rule.valuefield_number>=0 and rule.valuefield_number<=0x7f:
+            warn_gt = True
+
+    # There will be false positives. Sometimes, the field really is a
+    # signed byte. Probably more likely, the combination of this rule
+    # and another rule ultimately handles the negative values correctly.
+    # That's too difficult for us to detect.
+    if warn_lt:
+        emit_warning(ctx, fctx, rule,
+            "Suspicious signed comparison, will match values >=0x80")
+    if warn_gt:
+        emit_warning(ctx, fctx, rule,
+            "Suspicious signed comparison, will not match values >=0x80")
+
 def signed_with_percentu_warn(ctx, fctx, rule):
     # For the purposes of printing, a 1- or 2-byte signed int apparently
     # gets promoted to a 4-byte signed int, then reinterpreted as an
@@ -844,6 +876,8 @@ def process_rule_early(ctx, fctx, rule):
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
     uintrange_warn(ctx, fctx, rule)
+    if ctx.warning_level>=3:
+        byte_compare_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
         signed_with_percentu_warn(ctx, fctx, rule)
     if ctx.warning_level>=2:
