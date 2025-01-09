@@ -28,4 +28,8 @@ email. But note that mgchkj.py is not a very serious project, and is not
 expected to grow much beyond its current state. False positives and false
 negatives exist, and it most cases are not considered to be bugs.
 
+For usage instructions, and a list of options, run mgchkj.py without arguments.
+I recommend using the "-w3" option, at least occasionally, but it's too noisy
+to be the default.
+
 See the comments at the beginning of mgchkj.py for additional information.
