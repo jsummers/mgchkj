@@ -826,7 +826,7 @@ def datatype_warnings(ctx, fctx, rule):
     # so this checker is not all that useful.
     # But file's parser is more permissive than ours (most whitespace
     # is optional), so we may catch some errors that happened to be
-    # syntactially valid.
+    # syntactically valid.
     if rule.fdatatypeinfo is None:
         emit_warning(ctx, fctx, rule,
             "Unrecognized type (or missing usual whitespace)")
@@ -888,7 +888,7 @@ def process_rule_early(ctx, fctx, rule):
     badquotes_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
-def parse_one_line(ctx, fctx, line_text):
+def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
     # Line format:  >>offset   type   value   message
     # fstate:
     #  0=init
@@ -896,48 +896,57 @@ def parse_one_line(ctx, fctx, line_text):
     #  3=reading type, 4=done with type
     #  5=reading value, 6=done with value
     #  7=reading message
-    # Q. Could the lines be parsed with REGEXPs instead?
-    # A. Probably.
+
+    # (Whitespace at the start of a line is *not* ignored.)
+    if len(line_text_orig)==0:
+        return None
+    if line_text_orig[0:1]=='#':
+        return None
+    if line_text_orig[0:2]=='!:':
+        return None
+
+    rule = rule_context(ctx, fctx)
+    rule.linenum = fctx.linenum
+    rule.level = 0
+    rule.text = line_text_friendly
+    rule.text_orig = line_text_orig
+
     fstate = 1
     escape_flag = False
     internal_whitespace_flag = False
-    level = 0
     field = [ '', '', '', '' ]
+    rule.fieldsep = [ '', '', '' ] # the whitespace between fields
 
-    # (Whitespace at the start of a line is *not* ignored.)
-    if len(line_text)==0:
-        return None
-    if line_text[0:1]=='#':
-        return None
-    if line_text[0:2]=='!:':
-        return None
+    for i in range(len(line_text_orig)):
+        ch = line_text_orig[i]
 
-    for i in range(len(line_text)):
-        ch = line_text[i]
-
-        isws = (ch=='\x20')
+        isws = (ch=='\x09') or (ch=='\x20')
 
         if fstate==1:
             if isws:
+                rule.fieldsep[0] += ch
                 fstate = 2
                 continue
             field[0] += ch
             if ch=='>':
-                level += 1
+                rule.level += 1
 
         if fstate==2:
             if isws:
+                rule.fieldsep[0] += ch
                 continue
             fstate = 3
 
         if fstate==3:
             if isws:
+                rule.fieldsep[1] += ch
                 fstate = 4
                 continue
             field[1] += ch
 
         if fstate==4:
             if isws:
+                rule.fieldsep[1] += ch
                 continue
             fstate = 5
 
@@ -955,6 +964,7 @@ def parse_one_line(ctx, fctx, line_text):
             if field[2]=='' and (ch in '!=<>&^~'):
                 internal_whitespace_flag = True
             if isws:
+                rule.fieldsep[2] += ch
                 fstate = 6
                 continue
             if ch=='\\':
@@ -963,6 +973,7 @@ def parse_one_line(ctx, fctx, line_text):
 
         if fstate==6:
             if isws:
+                rule.fieldsep[2] += ch
                 continue
             fstate = 7
 
@@ -972,11 +983,6 @@ def parse_one_line(ctx, fctx, line_text):
     if ctx.debug:
         print("%d|%d|%d|%s|%s|%s|%s|" % (fctx.linenum, level, \
             fstate, field[0], field[1], field[2], field[3]))
-
-    rule = rule_context(ctx, fctx)
-    rule.linenum = fctx.linenum
-    rule.level = level
-    rule.text = line_text
 
     rule.typefield1 = field[1]
     m1 = ctx.type_re1.match(rule.typefield1)
@@ -999,16 +1005,16 @@ def parse_one_line(ctx, fctx, line_text):
 
     return rule
 
-def ctrlchar_warn(ctx, fctx, line_text):
-    if not line_has_ctrl_chars(line_text):
+def ctrlchar_warn(ctx, fctx, line_text_friendly):
+    if not line_has_ctrl_chars(line_text_friendly):
         return
 
     fullmsg = format_warning2(fctx, \
-        "Line has unexpected control characters", line_text)
+        "Line has unexpected control characters", line_text_friendly)
     print(fullmsg)
 
-def nonascii_warn(ctx, fctx, line_text):
-    n = guess_line_encoding(line_text)
+def nonascii_warn(ctx, fctx, line_text_friendly):
+    n = guess_line_encoding(line_text_friendly)
 
     # I don't know what encoding these files are supposed to use.
     # We warn about anything not UTF-8-compatible, and with -w3 about
@@ -1023,20 +1029,21 @@ def nonascii_warn(ctx, fctx, line_text):
     else:
         str="probably not UTF-8"
     fullmsg = format_warning2(fctx, \
-        "Line has non-ASCII characters (%s)" % (str), line_text)
+        "Line has non-ASCII characters (%s)" % (str), line_text_friendly)
     print(fullmsg)
 
 # Checkers that also apply to comment lines, etc.
-def anyline_tests(ctx, fctx, line_text):
+def anyline_tests(ctx, fctx, line_text_friendly):
     if ctx.warning_level>=2:
-        nonascii_warn(ctx, fctx, line_text)
-    ctrlchar_warn(ctx, fctx, line_text)
+        nonascii_warn(ctx, fctx, line_text_friendly)
+    ctrlchar_warn(ctx, fctx, line_text_friendly)
 
-def one_line(ctx, fctx, line_text):
-    rule = parse_one_line(ctx, fctx, line_text)
+def one_line(ctx, fctx, line_text, line_text_friendly):
+    rule = parse_one_line(ctx, fctx, line_text, line_text_friendly)
 
-    if len(line_text)>0:
-        anyline_tests(ctx, fctx, line_text)
+    # TODO: Maybe some tests should have access to orig line_text
+    if len(line_text_friendly)>0:
+        anyline_tests(ctx, fctx, line_text_friendly)
 
     if rule is None:
         return
@@ -1068,7 +1075,8 @@ def one_line(ctx, fctx, line_text):
         print('push rule@%d' % (rule.linenum))
     fctx.rule_stack.append(rule)
 
-def preprocess_line(ctx, l1):
+def make_friendly_msg(ctx, l1):
+    l1 = l1.rstrip('\x20\x09') # Strip trailing whitespace
     l2 = ''
     wscount = 0
     for i in range(len(l1)):
@@ -1076,7 +1084,6 @@ def preprocess_line(ctx, l1):
         if ch==' ' or ch=='\x09':
             # Convert tabs to spaces, and limit the length of runs of
             # spaces in our output messages.
-            # This should not meaningfully affect processing.
             wscount += 1
             if wscount<=3:
                 l2 += ' '
@@ -1089,9 +1096,9 @@ def preprocess_line(ctx, l1):
 def onefile_main(ctx, fctx):
     for line in fctx.inf:
         fctx.linenum += 1
-        line2 = line.rstrip('\n\x20\x09')
-        line2 = preprocess_line(ctx, line2)
-        one_line(ctx, fctx, line2)
+        line_text_orig = line.rstrip('\n')
+        line_text_friendly = make_friendly_msg(ctx, line_text_orig)
+        one_line(ctx, fctx, line_text_orig, line_text_friendly)
 
 def onefile(ctx, fn):
     fctx = file_context(ctx)
