@@ -871,6 +871,14 @@ def valuemisc_warn(ctx, fctx, rule):
         emit_warning(ctx, fctx, rule,
             "Test string contains escaped tab; suggest \\t instead")
 
+    # This is disabled (warning level 4 is unofficial). It's noisy,
+    # and not likely to catch any errors that don't trigger the
+    # escaped-tab warning.
+    if ctx.warning_level>=4:
+        if len(rule.valuefield)>=1 and rule.valuefield[-1]==" ":
+            emit_warning(ctx, fctx, rule,
+                "Test string ends with escaped space; suggest \\x20 instead")
+
 def messagemisc_warn(ctx, fctx, rule):
     if len(rule.message) < 1:
         return
