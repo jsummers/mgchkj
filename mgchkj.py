@@ -896,8 +896,11 @@ def messagemisc_warn(ctx, fctx, rule):
     # any special handling of it.
     # While a trailing space can be mildly useful, I think it's
     # almost never a good idea.
+    # We whitelist the message "\b ", because apparently it's an idiom
+    # used as a dummy message, to attach certain annotations to (it
+    # doesn't fully work, but maybe it's the best that can be done).
     if ctx.warning_level>=2:
-        if rule.message[-1]==" ":
+        if (rule.message[-1]==" ") and (rule.message!="\\b "):
             emit_warning(ctx, fctx, rule, "Message ends with a space")
 
     if ctx.warning_level>=3:
