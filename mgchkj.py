@@ -864,6 +864,33 @@ def string16_warnings(ctx, fctx, rule):
         emit_warning(ctx, fctx, rule,
             "Modifier /<width> might not be implemented for string16 types")
 
+def valuemisc_warn(ctx, fctx, rule):
+    if "\x09" in rule.valuefield:
+        # I'm assuming an escaped literal tab is the only way we
+        # could get here.
+        emit_warning(ctx, fctx, rule,
+            "Test string contains escaped tab; suggest \\t instead")
+
+def messagemisc_warn(ctx, fctx, rule):
+    if len(rule.message) < 1:
+        return
+
+    if "\x09" in rule.message:
+        emit_warning(ctx, fctx, rule, "Message contains a tab character")
+
+    # Trailing whitespace is significant. There doesn't seem to be
+    # any special handling of it.
+    # While a trailing space can be mildly useful, I think it's
+    # almost never a good idea.
+    if ctx.warning_level>=2:
+        if rule.message[-1]==" ":
+            emit_warning(ctx, fctx, rule, "Message ends with a space")
+
+    if ctx.warning_level>=3:
+        if "  " in rule.message:
+            emit_warning(ctx, fctx, rule,
+                "Message contains consecutive spaces")
+
 def process_rule_early(ctx, fctx, rule):
     set_more_rule_properties(ctx, fctx, rule)
     get_fdatatypeinfo(ctx, rule)
@@ -886,6 +913,8 @@ def process_rule_early(ctx, fctx, rule):
     regexnul_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
+    valuemisc_warn(ctx, fctx, rule)
+    messagemisc_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
 
 def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
@@ -1076,7 +1105,6 @@ def one_line(ctx, fctx, line_text, line_text_friendly):
     fctx.rule_stack.append(rule)
 
 def make_friendly_msg(ctx, l1):
-    l1 = l1.rstrip('\x20\x09') # Strip trailing whitespace
     l2 = ''
     wscount = 0
     for i in range(len(l1)):
