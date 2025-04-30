@@ -534,14 +534,20 @@ def spacecomma_warn(ctx, fctx, rule):
 def badquotes_warn(ctx, fctx, rule):
     # It's suspicious if:
     # the value starts with '"' and contains no other '"'; and
-    # the message contains exactly one '"'.
+    # the message contains a '"'; and
+    # the whitespace following the value consists of one space.
     if rule.message=='':
         return
     if not (rule.valuefield.startswith('"')):
         return
     if ('"' in rule.valuefield[1:]):
         return
-    if(rule.message.count('"') != 1):
+    if rule.fieldsep[2]!=" ":
+        return
+    nq = rule.message.count('"')
+    if nq==0:
+        return
+    if nq!=1 and ctx.warning_level<2:
         return
     emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
 
