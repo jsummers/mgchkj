@@ -81,11 +81,13 @@ class rule_context:
         rule.typefield2 = '' # w/o modifiers or 'u' prefix
         rule.typefield_operator = ''
         rule.typefield_operand = ''
+        rule.modifier_width = None
         rule.sanitized_string_opts = ''
         rule.valuefield = ''
         rule.valuefield_operator = '='
         rule.have_valuefield_number = False
         rule.valuefield_number = 0
+        rule.valuefield_unescaped = ''
         rule.message = ''
         rule.has_child = False
         rule.has_format_specifier = False
@@ -498,9 +500,17 @@ def set_more_rule_properties(ctx, fctx, rule):
 def regexnul_warn(ctx, fctx, rule):
     if rule.typefield2 != 'regex':
         return
-    val_u = unescape_value(rule.valuefield)
-    if '\x00' in val_u:
+    if '\x00' in rule.valuefield_unescaped:
         emit_warning(ctx, fctx, rule, 'Regex might be truncated by NUL byte')
+
+def stringlen_warn(ctx, fctx, rule):
+    if rule.typefield2 != 'string':
+        return
+    if rule.modifier_width is None:
+        return
+    if len(rule.valuefield_unescaped) > rule.modifier_width:
+        emit_warning(ctx, fctx, rule, \
+            'String exceeds /<width> limit')
 
 def line_has_ctrl_chars(s):
     for ch in s:
@@ -795,8 +805,9 @@ def ishexdigit(s):
 def sanitize_string_opts(rule):
     s1 = rule.typefield_operand
     s2 = ''
-    in_decnum = False
-    in_hexnum = False
+    in_width = False
+    width_as_string = ''
+    width_base = 10
     skip1 = False
 
     for i in range(len(s1)):
@@ -804,28 +815,40 @@ def sanitize_string_opts(rule):
         if skip1:
             a = ""
             skip1 = False
-        elif in_decnum:
+        elif in_width and (width_base==8 or width_base==10):
             if s1[i].isdecimal():
+                width_as_string += s1[i]
                 a = ""
             else:
-                in_decnum = False
-        elif in_hexnum:
+                in_width = False
+        elif in_width and width_base==16:
             if ishexdigit(s1[i]):
+                width_as_string += s1[i]
                 a = ""
             else:
-                in_hexnum = False
+                in_width = False
         else:
             if s1[i].isdecimal():
+                width_as_string = ""
                 if s1[i]=="0" and (i+1<len(s1)) and \
                     (s1[i+1]=="x" or s1[i+1]=="X"):
-                    in_hexnum = True
+                    in_width = True
+                    width_base = 16
                     skip1 = True
+                elif s1[i]=="0":
+                    in_width = True
+                    width_base = 8
                 else:
-                    in_decnum = True
+                    in_width = True
+                    width_base = 10
+                width_as_string += s1[i]
+                # TODO: This isn't needed anymore.
                 a = "0" # Collapse numbers to "0"
         s2 += a
 
     rule.sanitized_string_opts = s2
+    if width_as_string:
+        rule.modifier_width = int(width_as_string, base=width_base)
 
 def datatype_warnings(ctx, fctx, rule):
     # Normally, 'file' will error out if there's an invalid type,
@@ -916,6 +939,9 @@ def process_rule_early(ctx, fctx, rule):
         rule.fdatatypeinfo.has_string_modifiers:
         sanitize_string_opts(rule)
 
+    if rule.typefield2=='string' or  rule.typefield2=='regex':
+        rule.valuefield_unescaped = unescape_value(rule.valuefield)
+
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
@@ -928,6 +954,7 @@ def process_rule_early(ctx, fctx, rule):
         unused_type_operator_warn(ctx, fctx, rule)
     string16_warnings(ctx, fctx, rule)
     regexnul_warn(ctx, fctx, rule)
+    stringlen_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
     valuemisc_warn(ctx, fctx, rule)
