@@ -803,7 +803,7 @@ def sanitize_string_opts(rule):
         a = s1[i]
         if skip1:
             a = ""
-            skipn1 = False
+            skip1 = False
         elif in_decnum:
             if s1[i].isdecimal():
                 a = ""
