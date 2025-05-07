@@ -1075,6 +1075,10 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
         rule.valuefield = field[2]
 
     rule.message = field[3]
+    # This is a bit of a hack, but a message of just "\b" (without trailing
+    # whitespace) seems to be processed as if there were no message.
+    if rule.message=="\\b":
+        rule.message = ""
 
     return rule
 
