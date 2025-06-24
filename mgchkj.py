@@ -108,6 +108,7 @@ class rule_context:
         rule.num_dsc_with_sm_by_br = [0, 0, 0]
         rule.fdatatypeinfo = None
         rule.nbo_warning_handled = False
+        rule.suspicious_octal = False
 
 class file_context:
     def __init__(fctx, ctx):
@@ -124,11 +125,16 @@ class unescape_context:
         self.have_pending_int = False
         self.pending_int_base = 0
         self.max_digits_pending = 0
+        self.digit_count = 0
         self.pending_int = 0
+        self.suspicious_octal = False
 
 def unescape_flush(ue):
     if ue.have_pending_int:
         ue.output += chr(ue.pending_int)
+        if ue.pending_int_base==8 and ue.digit_count==2 and \
+            ue.pending_int<8:
+            ue.suspicious_octal = True
         ue.have_pending_int = False
 
 def decode_ascii_digit(chn, base):
@@ -150,6 +156,7 @@ def unescape_addchar(ue, ch):
     if ue.have_pending_int:
         val, ok = decode_ascii_digit(chn, ue.pending_int_base)
         if ok:
+            ue.digit_count += 1
             ue.pending_int *= ue.pending_int_base
             ue.pending_int += val
             ue.max_digits_pending -= 1
@@ -165,11 +172,13 @@ def unescape_addchar(ue, ch):
             ue.pending_int_base = 16
             ue.max_digits_pending = 2
             ue.pending_int = 0
+            ue.digit_count = 0
         elif chn>=48 and chn<=55:
             ue.have_pending_int = True
             ue.pending_int_base = 8
             ue.max_digits_pending = 2
             ue.pending_int = chn-48
+            ue.digit_count = 1
         else:
             ue.output += ch
         ue.escape_pending = False
@@ -179,12 +188,15 @@ def unescape_addchar(ue, ch):
         else:
             ue.output += ch
 
-def unescape_value(t_escaped):
+def unescape_value(rule):
+    t_escaped = rule.valuefield
     ue = unescape_context()
     for i in range(len(t_escaped)):
         unescape_addchar(ue, t_escaped[i])
     unescape_flush(ue)
-    return ue.output
+    rule.valuefield_unescaped = ue.output
+    if ue.suspicious_octal:
+        rule.suspicious_octal = True
 
 #-------------------------------
 
@@ -940,7 +952,10 @@ def process_rule_early(ctx, fctx, rule):
         sanitize_string_opts(rule)
 
     if rule.typefield2=='string' or  rule.typefield2=='regex':
-        rule.valuefield_unescaped = unescape_value(rule.valuefield)
+        unescape_value(rule)
+        if rule.suspicious_octal and ctx.warning_level>=2:
+            emit_warning(ctx, fctx, rule, "Suspicious octal escape "
+                "(two digits, useless leading 0)")
 
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
