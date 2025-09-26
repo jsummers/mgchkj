@@ -26,7 +26,7 @@ should begin with ">>>12", not ">>12".
 Suggestions and bug reports may be made to the GitHub issue tracker, or via
 email. But note that mgchkj.py is not a very serious project, and is not
 expected to grow much beyond its current state. False positives and false
-negatives exist, and it most cases are not considered to be bugs.
+negatives exist, and in most cases are not considered to be bugs.
 
 For usage instructions, and a list of options, run mgchkj.py without arguments.
 I recommend using the "-w3" option, at least occasionally, but it's too noisy
