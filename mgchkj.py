@@ -634,6 +634,11 @@ def parse_valuefield_number(ctx, fctx, rule):
     if pflag:
         rule.have_valuefield_number = True
         rule.valuefield_number = val
+    else:
+        # 'file' may tolerate stray trailing characters, for example;
+        # but we warn about them.
+        emit_warning(ctx, fctx, rule, \
+            f'Malformed integer ({rule.valuefield})')
 
 def nativebyteorder_warn(ctx, fctx, rule):
     # Don't warn if an ancestor rule already warned.
