@@ -65,7 +65,7 @@ class context:
         ctx.type_re1 = re.compile(r'([a-zA-Z0-9_]+)([\-+/\&|%*\~^])(.*)$')
         ctx.val_re_base8 = re.compile('[+-]?0[0-7]*$')
         ctx.val_re_base10 = re.compile('[+-]?[1-9][0-9]*$')
-        ctx.val_re_base16 = re.compile('[+-]?0x[0-9A-Fa-f]+$')
+        ctx.val_re_base16 = re.compile('[+-]?0[xX][0-9A-Fa-f]+$')
         ctx.firstword_lc_re = re.compile(r'([a-z][A-Za-z0-9]*)')
         ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
         ctx.fmt_spec_re = re.compile(r'%([-.#0-9l]*)([sciduoxXeEfFgG])')
@@ -604,6 +604,8 @@ def parse_valuefield_number(ctx, fctx, rule):
     if rule.fdatatypeinfo is None:
         return
     if not rule.fdatatypeinfo.isint:
+        return
+    if rule.valuefield_operator=='x':
         return
 
     pflag = False
