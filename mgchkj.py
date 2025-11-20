@@ -109,6 +109,8 @@ class rule_context:
         rule.fdatatypeinfo = None
         rule.nbo_warning_handled = False
         rule.suspicious_octal = False
+        rule.suspicious_regex_escape = False
+        rule.suspicious_regex_escaped_char = None
 
 class file_context:
     def __init__(fctx, ctx):
@@ -128,6 +130,8 @@ class unescape_context:
         self.digit_count = 0
         self.pending_int = 0
         self.suspicious_octal = False
+        self.regex_mode = False
+        self.suspicious_regex_escaped_char = None
 
 def unescape_flush(ue):
     if ue.have_pending_int:
@@ -180,6 +184,14 @@ def unescape_addchar(ue, ch):
             ue.pending_int = chn-48
             ue.digit_count = 1
         else:
+            # Note that expressions like "\1" are also special regex
+            # things. But warning about them would be tricky (because
+            # they're usually valid octal escapes), and of little value.
+            if ue.regex_mode and \
+                (ue.suspicious_regex_escaped_char is None) and \
+                ((ch in '.[]$()*+?|{}') or \
+                (ch=='^' and len(ue.output)!=0)):
+                ue.suspicious_regex_escaped_char = ch
             ue.output += ch
         ue.escape_pending = False
     else:
@@ -191,12 +203,17 @@ def unescape_addchar(ue, ch):
 def unescape_value(rule):
     t_escaped = rule.valuefield
     ue = unescape_context()
+    if rule.typefield2=='regex':
+        ue.regex_mode = True
     for i in range(len(t_escaped)):
         unescape_addchar(ue, t_escaped[i])
     unescape_flush(ue)
     rule.valuefield_unescaped = ue.output
     if ue.suspicious_octal:
         rule.suspicious_octal = True
+    if ue.suspicious_regex_escaped_char is not None:
+        rule.suspicious_regex_escape = True
+        rule.suspicious_regex_escaped_char = ue.suspicious_regex_escaped_char
 
 #-------------------------------
 
@@ -958,8 +975,26 @@ def process_rule_early(ctx, fctx, rule):
         rule.fdatatypeinfo.has_string_modifiers:
         sanitize_string_opts(rule)
 
-    if rule.typefield2=='string' or  rule.typefield2=='regex':
+    if rule.typefield2=='string' or rule.typefield2=='regex':
         unescape_value(rule)
+
+        # The regex pattern in the magic file will undergo one round of
+        # backslash-unescaping before being seen by the regex engine.
+        # So, "*" would be the regex special char, while "\\*" becomes
+        # "\*", so it matches a literal "*".
+        # "\*" is equivalent to "*", so there should be no reason to
+        # use it. You'd use it if "*" were special to file's parser,
+        # which it isn't (though "^" can be).
+        if rule.suspicious_regex_escape and ctx.warning_level>=2:
+            if rule.suspicious_regex_escaped_char=='^':
+                emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
+                    "'\\' in '\\^' has no effect except at the start "
+                    "of the field")
+            else:
+                emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
+                    "'\\' in '\\%s' has no effect" % \
+                    (rule.suspicious_regex_escaped_char))
+
         if rule.suspicious_octal and ctx.warning_level>=2:
             emit_warning(ctx, fctx, rule, "Suspicious octal escape "
                 "(two digits, useless leading 0)")
