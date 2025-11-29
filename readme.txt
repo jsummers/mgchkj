@@ -23,6 +23,11 @@ png.magic:4: Line has no effect [>>8   ubelong  13]
 Given that warning, a human might be able to figure out that the last line
 should begin with ">>>12", not ">>12".
 
+Note that "file" has some warnings of its own, and it most likely warns about
+some things that Mgchkj does not. Some warnings are only printed in debug mode
+(-d), and some are only printed when compiling (-C). Testing your pattern with
+the latest version of "file", compiled from source, is always recommended.
+
 Suggestions and bug reports may be made to the GitHub issue tracker, or via
 email. But note that mgchkj.py is not a very serious project, and is not
 expected to grow much beyond its current state. False positives and false
