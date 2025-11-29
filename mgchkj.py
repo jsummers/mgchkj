@@ -770,7 +770,10 @@ def byte_compare_warn(ctx, fctx, rule):
         if rule.valuefield_number>=1 and rule.valuefield_number<=0x7f:
             warn_lt = True
     elif rule.valuefield_operator=='>':
-        if rule.valuefield_number>=0 and rule.valuefield_number<=0x7f:
+        # ("byte >32" is a sensible way to look for printable ASCII, so
+        # it's whitelisted.)
+        if rule.valuefield_number>=0 and rule.valuefield_number<=0x7f \
+            and rule.valuefield_number!=32:
             warn_gt = True
 
     # There will be false positives. Sometimes, the field really is a
