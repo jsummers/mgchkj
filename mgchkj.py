@@ -70,6 +70,10 @@ class context:
         ctx.no_uc_re = re.compile(r'[a-z0-9]+$')
         ctx.fmt_spec_re = re.compile(r'%([-.#0-9l]*)([sciduoxXeEfFgG])')
         ctx.fdatatypes = {}
+        ctx.c_escape_info = {
+            'a':['bell', '\\x07'],
+            'b':['backspace', '\\x08'],
+            'v':['vtab', '\\x0b'] }
 
 class rule_context:
     def __init__(rule, ctx, fctx):
@@ -111,6 +115,7 @@ class rule_context:
         rule.suspicious_octal = False
         rule.suspicious_regex_escape = False
         rule.suspicious_regex_escaped_char = None
+        rule.valuefield_escaped_misc_chars = ""
 
 class file_context:
     def __init__(fctx, ctx):
@@ -132,6 +137,7 @@ class unescape_context:
         self.suspicious_octal = False
         self.regex_mode = False
         self.suspicious_regex_escaped_char = None
+        self.escaped_misc_chars = ""
 
 def unescape_flush(ue):
     if ue.have_pending_int:
@@ -183,6 +189,12 @@ def unescape_addchar(ue, ch):
             ue.max_digits_pending = 2
             ue.pending_int = chn-48
             ue.digit_count = 1
+        elif (chn>=0x38 and chn<=0x39) or \
+            (chn>=0x41 and chn<=0x5a) or \
+            (chn>=0x61 and chn<=0x7a):
+            ue.output += ch
+            if ch not in ue.escaped_misc_chars:
+                ue.escaped_misc_chars += ch
         else:
             # Note that expressions like "\1" are also special regex
             # things. But warning about them would be tricky (because
@@ -214,6 +226,7 @@ def unescape_value(rule):
     if ue.suspicious_regex_escaped_char is not None:
         rule.suspicious_regex_escape = True
         rule.suspicious_regex_escaped_char = ue.suspicious_regex_escaped_char
+    rule.valuefield_escaped_misc_chars = ue.escaped_misc_chars
 
 #-------------------------------
 
@@ -946,6 +959,22 @@ def valuemisc_warn(ctx, fctx, rule):
         if len(rule.valuefield)>=1 and rule.valuefield[-1]==" ":
             emit_warning(ctx, fctx, rule,
                 "Test string ends with escaped space; suggest \\x20 instead")
+
+    for ch in rule.valuefield_escaped_misc_chars:
+        if ch in "fnrt":
+            pass
+        elif ch in "abv":
+            if ctx.warning_level>=3:
+                emit_warning(ctx, fctx, rule, \
+                    "Rare escape sequence '\\%s' (%s); " \
+                    "consider '%s' instead" % \
+                    (ch, ctx.c_escape_info[ch][0], \
+                    ctx.c_escape_info[ch][1]))
+        else:
+            # A warning similar to this does exist in 'file', but it
+            # doesn't happen by default.
+            emit_warning(ctx, fctx, rule, \
+                "Unknown escape sequence '\\%s'" % (ch))
 
 def messagemisc_warn(ctx, fctx, rule):
     if len(rule.message) < 1:
