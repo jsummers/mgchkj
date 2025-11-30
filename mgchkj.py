@@ -960,6 +960,27 @@ def valuemisc_warn(ctx, fctx, rule):
             emit_warning(ctx, fctx, rule,
                 "Test string ends with escaped space; suggest \\x20 instead")
 
+    # The regex pattern in the magic file will undergo one round of
+    # backslash-unescaping before being seen by the regex engine.
+    # So, "*" would be the regex special char, while "\\*" becomes
+    # "\*", so it matches a literal "*".
+    # "\*" is equivalent to "*", so there should be no reason to
+    # use it. You'd use it if "*" were special to file's parser,
+    # which it isn't (though "^" can be).
+    if rule.suspicious_regex_escape and ctx.warning_level>=2:
+        if rule.suspicious_regex_escaped_char=='^':
+            emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
+                "'\\' in '\\^' has no effect except at the start "
+                "of the field")
+        else:
+            emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
+                "'\\' in '\\%s' has no effect" % \
+                (rule.suspicious_regex_escaped_char))
+
+    if rule.suspicious_octal and ctx.warning_level>=2:
+        emit_warning(ctx, fctx, rule, "Suspicious octal escape "
+            "(two digits, useless leading 0)")
+
     for ch in rule.valuefield_escaped_misc_chars:
         if ch in "fnrt":
             pass
@@ -1009,27 +1030,6 @@ def process_rule_early(ctx, fctx, rule):
 
     if rule.typefield2=='string' or rule.typefield2=='regex':
         unescape_value(rule)
-
-        # The regex pattern in the magic file will undergo one round of
-        # backslash-unescaping before being seen by the regex engine.
-        # So, "*" would be the regex special char, while "\\*" becomes
-        # "\*", so it matches a literal "*".
-        # "\*" is equivalent to "*", so there should be no reason to
-        # use it. You'd use it if "*" were special to file's parser,
-        # which it isn't (though "^" can be).
-        if rule.suspicious_regex_escape and ctx.warning_level>=2:
-            if rule.suspicious_regex_escaped_char=='^':
-                emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
-                    "'\\' in '\\^' has no effect except at the start "
-                    "of the field")
-            else:
-                emit_warning(ctx, fctx, rule, "Suspicious regex escape; "
-                    "'\\' in '\\%s' has no effect" % \
-                    (rule.suspicious_regex_escaped_char))
-
-        if rule.suspicious_octal and ctx.warning_level>=2:
-            emit_warning(ctx, fctx, rule, "Suspicious octal escape "
-                "(two digits, useless leading 0)")
 
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
