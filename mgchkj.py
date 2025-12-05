@@ -81,6 +81,7 @@ class rule_context:
         rule.linenum = 0
         rule.level = 0
         rule.text = ''
+        rule.offsetfield = ''
         rule.typefield1 = '' # w/o modifiers
         rule.typefield2 = '' # w/o modifiers or 'u' prefix
         rule.typefield_operator = ''
@@ -562,7 +563,7 @@ def line_has_ctrl_chars(s):
     return 0
 
 # Returns 0=ascii, 1=utf-8, 2=unknown
-def guess_line_encoding(s):
+def guess_string_encoding(s):
     utf8_flag = False
     for ch in s:
         n = ord(ch)
@@ -1061,28 +1062,46 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
 
     # (Whitespace at the start of a line is *not* ignored.)
     if len(line_text_orig)==0:
-        return None
+        return 'b', None
     if line_text_orig[0:1]=='#':
-        return None
+        return 'c', None
     if line_text_orig[0:2]=='!:':
-        return None
+        return 'a', None
 
     rule = rule_context(ctx, fctx)
     rule.linenum = fctx.linenum
     rule.level = 0
     rule.text = line_text_friendly
     rule.text_orig = line_text_orig
+    rule.message_bad_encoding = False
+    rule.misc_bad_encoding = False
+    rule.message_is_utf8 = False
+    rule.misc_is_utf8 = False
 
     fstate = 1
     escape_flag = False
+    gt_flag = False # Have we found a non-'>' char?
     internal_whitespace_flag = False
     field = [ '', '', '', '' ]
     rule.fieldsep = [ '', '', '' ] # the whitespace between fields
 
     for i in range(len(line_text_orig)):
         ch = line_text_orig[i]
+        chn = ord(ch)
 
         isws = (ch=='\x09') or (ch=='\x20')
+
+        if chn>127:
+            if chn==0xfffd:
+                if fstate>=6:
+                    rule.message_bad_encoding = True
+                else:
+                    rule.misc_bad_encoding = True
+            else:
+                if fstate>=6:
+                    rule.message_is_utf8 = True
+                else:
+                    rule.misc_is_utf8 = True
 
         if fstate==1:
             if isws:
@@ -1090,8 +1109,12 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
                 fstate = 2
                 continue
             field[0] += ch
-            if ch=='>':
+
+            if (not gt_flag) and (ch=='>'):
                 rule.level += 1
+            else:
+                gt_flag = True
+                rule.offsetfield += ch
 
         if fstate==2:
             if isws:
@@ -1169,7 +1192,7 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
     if rule.message=="\\b":
         rule.message = ""
 
-    return rule
+    return 'r', rule
 
 def ctrlchar_warn(ctx, fctx, line_text_friendly):
     if not line_has_ctrl_chars(line_text_friendly):
@@ -1179,15 +1202,17 @@ def ctrlchar_warn(ctx, fctx, line_text_friendly):
         "Line has unexpected control characters", line_text_friendly)
     print(fullmsg)
 
-def nonascii_warn(ctx, fctx, line_text_friendly):
-    n = guess_line_encoding(line_text_friendly)
+def nonrule_nonascii_warn(ctx, fctx, linetype, line_text_friendly):
+    # FIXME: The encoding tests are a mess.
 
-    # I don't know what encoding these files are supposed to use.
-    # We warn about anything not UTF-8-compatible, and with -w3 about
-    # anything not ASCII.
+    n = guess_string_encoding(line_text_friendly)
     if n==0:
         return
-    if n==1 and ctx.warning_level<3:
+
+    if (linetype=='c') and (ctx.warning_level<2):
+            return
+    # Usually allow UTF-8 comments
+    if (linetype=='c') and (n==1) and (ctx.warning_level<4):
         return
 
     if n==1:
@@ -1198,18 +1223,29 @@ def nonascii_warn(ctx, fctx, line_text_friendly):
         "Line has non-ASCII characters (%s)" % (str), line_text_friendly)
     print(fullmsg)
 
-# Checkers that also apply to comment lines, etc.
-def anyline_tests(ctx, fctx, line_text_friendly):
-    if ctx.warning_level>=2:
-        nonascii_warn(ctx, fctx, line_text_friendly)
-    ctrlchar_warn(ctx, fctx, line_text_friendly)
+def rule_encoding_tests(ctx, fctx, rule):
+    # It might not be documented, but UTF-8 is at least semi-approved,
+    # for messages and comments.
+    if rule.misc_bad_encoding or rule.misc_is_utf8:
+        emit_warning(ctx, fctx, rule, "Line has non-ASCII characters " \
+            "(in a field other than message)")
+
+    if rule.message_bad_encoding:
+        emit_warning(ctx, fctx, rule, "Message has non-ASCII characters " \
+            "(probably not UTF-8)")
+    elif rule.message_is_utf8:
+        if ctx.warning_level>=4:
+            emit_warning(ctx, fctx, rule, "Message has non-ASCII characters " \
+                "(probably UTF-8)")
 
 def one_line(ctx, fctx, line_text, line_text_friendly):
-    rule = parse_one_line(ctx, fctx, line_text, line_text_friendly)
+    (linetype, rule) = parse_one_line(ctx, fctx, line_text, line_text_friendly)
 
-    # TODO: Maybe some tests should have access to orig line_text
-    if len(line_text_friendly)>0:
-        anyline_tests(ctx, fctx, line_text_friendly)
+    ctrlchar_warn(ctx, fctx, line_text_friendly)
+    if rule is not None:
+        rule_encoding_tests(ctx, fctx, rule)
+    elif len(line_text_friendly)>0:
+        nonrule_nonascii_warn(ctx, fctx, linetype, line_text_friendly)
 
     if rule is None:
         return
