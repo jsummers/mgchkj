@@ -2,13 +2,13 @@
 #
 # mgchkj.py
 #
-# Copyright (C) 2024-2025 by Jason Summers
+# Copyright (C) 2024-2026 by Jason Summers
 # Terms of use: MIT license
 #
 # Checker ("linter") for "magic" files used by the "file" command
 # (https://darwinsys.com/file/).
 #
-# Contact info as of 2025:
+# Contact info as of 2026:
 #  Development/website: https://github.com/jsummers/mgchkj
 #  Email: jason1@pobox.com
 #
@@ -1407,6 +1407,8 @@ def init_datatypes(ctx):
         'lestring16 vS',
         'search vST',
         'guid v',
+        'beguid v',
+        'leguid v',
         'der ',
         'bevarint ',
         'levarint ',
