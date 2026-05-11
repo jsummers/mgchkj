@@ -1166,7 +1166,7 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
             field[3] += ch
 
     if ctx.debug:
-        print("%d|%d|%d|%s|%s|%s|%s|" % (fctx.linenum, level, \
+        print("%d|%d|%d|%s|%s|%s|%s|" % (fctx.linenum, rule.level, \
             fstate, field[0], field[1], field[2], field[3]))
 
     rule.typefield1 = field[1]
