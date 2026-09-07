@@ -94,6 +94,8 @@ class rule_context:
         rule.valuefield_number = 0
         rule.valuefield_unescaped = ''
         rule.message = ''
+        rule.is_conditional = False
+        rule.conditional_keyword = ''
         rule.has_child = False
         rule.has_format_specifier = False
         rule.format_specifier = ''
@@ -1032,6 +1034,10 @@ def process_rule_early(ctx, fctx, rule):
     if rule.typefield2=='string' or rule.typefield2=='regex':
         unescape_value(rule)
 
+    if rule.is_conditional and rule.conditional_keyword=='if' and \
+        ctx.warning_level>=3:
+        emit_warning(ctx, fctx, rule,
+            "Pattern uses 'conditionals' feature, which might not be portable")
     datatype_warnings(ctx, fctx, rule)
     if ctx.warning_level>=2:
         nativebyteorder_warn(ctx, fctx, rule)
@@ -1124,8 +1130,18 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
 
         if fstate==3:
             if isws:
-                rule.fieldsep[1] += ch
-                fstate = 4
+                # This is a bit of a hack. Handling these line properly
+                # would make the parser more complex.
+                # TODO: I'm not sure of the syntax of "else" lines.
+                if field[1]=='if' or field[1]=='elif' or field[1]=='else':
+                    rule.is_conditional = True
+                    rule.conditional_keyword = field[1]
+                    field[1] = ''
+                    rule.fieldsep[0] = ''
+                    fstate = 2
+                else:
+                    rule.fieldsep[1] += ch
+                    fstate = 4
                 continue
             field[1] += ch
 
