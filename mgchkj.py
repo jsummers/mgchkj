@@ -1034,6 +1034,7 @@ def process_rule_early(ctx, fctx, rule):
     if rule.typefield2=='string' or rule.typefield2=='regex':
         unescape_value(rule)
 
+    # It's okay to only warn about "if", since it must always appear.
     if rule.is_conditional and rule.conditional_keyword=='if' and \
         ctx.warning_level>=3:
         emit_warning(ctx, fctx, rule,
@@ -1130,10 +1131,11 @@ def parse_one_line(ctx, fctx, line_text_orig, line_text_friendly):
 
         if fstate==3:
             if isws:
-                # This is a bit of a hack. Handling these line properly
+                # This is a bit of a hack. Handling these lines properly
                 # would make the parser more complex.
                 # TODO: I'm not sure of the syntax of "else" lines.
-                if field[1]=='if' or field[1]=='elif' or field[1]=='else':
+                if (field[1]=='if' or field[1]=='elif' or field[1]=='else') \
+                    and (not rule.is_conditional):
                     rule.is_conditional = True
                     rule.conditional_keyword = field[1]
                     field[1] = ''
