@@ -606,6 +606,19 @@ def badquotes_warn(ctx, fctx, rule):
         return
     emit_warning(ctx, fctx, rule, 'Possible incorrect use of quotes')
 
+# When a 'name' line directly has a message, there's a "gotcha":
+# the preceding separator space is always suppressed, even if something
+# has already been printed.
+# This warning can help to find formatting bugs.
+def namemsg_warn(ctx, fctx, rule):
+    if rule.message=='':
+        return
+    if rule.typefield2 != 'name':
+        return
+    if rule.message.startswith('\\b'):
+        return
+    emit_warning(ctx, fctx, rule, "'name' line with message")
+
 def number_is_palindrome(n, nbytes):
     if n<0:
         if n == -1:
@@ -1054,6 +1067,8 @@ def process_rule_early(ctx, fctx, rule):
     stringlen_warn(ctx, fctx, rule)
     spacecomma_warn(ctx, fctx, rule)
     badquotes_warn(ctx, fctx, rule)
+    if ctx.warning_level>=4:
+        namemsg_warn(ctx, fctx, rule)
     valuemisc_warn(ctx, fctx, rule)
     messagemisc_warn(ctx, fctx, rule)
     early_cmwarn_stuff(ctx, fctx, rule)
